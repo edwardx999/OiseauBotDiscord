@@ -1,0 +1,9 @@
+node_modules
+bin
+obj
+.vs
+*.js
+*.map
+*.user
+package-lock.json
+token.txt
