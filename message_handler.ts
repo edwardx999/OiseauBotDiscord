@@ -374,10 +374,16 @@ const execSproc: CommandFunction = (message, commandToken) => {
 	for (const attachment of message.attachments) {
 		attachments.push(attachment[1].url);
 	}
+	for (const arg of args) {
+		if (typeof arg !== "string") {
+			message.channel.send("Illegal tokens detected");
+			return;
+		}
+	}
 	{
 		let foundCommands = false;
 		for (let i = 0; i < args.length; ++i) {
-			const arg = args[i].toString();
+			const arg = args[i] as string;
 			if (arg.startsWith("-")) {
 				args.splice(0, i);
 				foundCommands = true;
