@@ -15,10 +15,10 @@ interface SprocResult {
 async function executeSproc(fileUrls: string[], commands: string[]): Promise<SprocResult> {
 	const tmpDir = os.tmpdir();
 	const tempFolder = await fs.promises.mkdtemp(tmpDir + pathSeparator);
-	const downloadJobs = fileUrls.map((url, index) => {
-		return fetch.default(url);
-	});
 	try {
+		const downloadJobs = fileUrls.map((url, index) => {
+			return fetch.default(url);
+		});
 		for (let i = 0; i < downloadJobs.length; ++i) {
 			const request = await downloadJobs[i];
 			const path = (() => {
@@ -49,9 +49,14 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 		const output = await new Promise<string>((resolve, reject) => {
 			const sproc = cp.spawn(`.${pathSeparator}sproc_lim`, [tempFolder].concat(commands));
 			let stdout = "";
-			sproc.stdout.on("data", data => stdout = stdout + data);
+			let stderr = "";
+			sproc.stdout.on("data", data => stdout += data);
+			sproc.stderr.on("data", data => stderr += data);
 			sproc.on("close", code => {
 				if (code != 0) {
+					console.log(code);
+					console.log(stdout);
+					console.log(stderr);
 					reject(stdout);
 				}
 				else {
@@ -65,7 +70,6 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 		await fs.promises.rmdir(tempFolder, { recursive: true });
 		throw e;
 	}
-	return;
 }
 
 async function cleanupSproc(result: SprocResult) {
