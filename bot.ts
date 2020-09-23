@@ -13,15 +13,10 @@ const token = fs.readFileSync(filename).toString();
 
 const client = new Discord.Client();
 
-client.on("ready", () => {
-	client.user.setPresence({
-		activity: {
-			type: "CUSTOM_STATUS",
-			name: "Use !help in bot - spam for help"
-		},
-		status: "online"
-	});
-});
+// doesn't work
+//client.on("ready", () => {
+//	client.user.setActivity({ type: "CUSTOM_STATUS", name: "Use !help in bot - spam for help" });
+//});
 
 client.on("message", messageHandler);
 

@@ -45,6 +45,9 @@
     <TypeScriptCompile Include="message_handler.ts">
       <SubType>Code</SubType>
     </TypeScriptCompile>
+    <TypeScriptCompile Include="sproc.ts">
+      <SubType>Code</SubType>
+    </TypeScriptCompile>
     <TypeScriptCompile Include="wiki_composer.ts">
       <SubType>Code</SubType>
     </TypeScriptCompile>

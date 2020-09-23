@@ -1,8 +1,10 @@
 ﻿export { messageHandler }
 import * as Discord from "discord.js";
-import * as ss from "string-similarity";
+import * as StringSimilarity from "string-similarity";
+import * as BashTokenize from "shell-quote";
 import { Hangman, cleanCharacters } from "./hangman";
 import { fetchComposerList, ComposerData, fetchComposerPageSize } from "./wiki_composer";
+import { executeSproc, cleanupSproc } from "./sproc";
 
 type CommandFunction = (message: Discord.Message, commandToken: string) => any;
 
@@ -57,7 +59,7 @@ function noRoleArgumentResponse(message: Discord.Message) {
 function noRoleExistReponse(message: Discord.Message, roleName: string) {
 	const roles = message.guild.roles.cache;
 	const rolesArray = roles.map(role => role.name);
-	const nearest = ss.findBestMatch(roleName, rolesArray);
+	const nearest = StringSimilarity.findBestMatch(roleName, rolesArray);
 	if (nearest.bestMatchIndex < rolesArray.length && nearest.bestMatch.rating > 0 && nearest.bestMatch.target.substring(0, 1) !== "@") {
 		return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${rolesArray[nearest.bestMatchIndex]}?`);
 	}
@@ -365,7 +367,63 @@ const hangman: CommandFunction = (message, commandToken) => {
 	}
 }
 
+
+const execSproc: CommandFunction = (message, commandToken) => {
+	const args = BashTokenize.parse(pastFirstToken(message.content, commandToken));
+	const attachments: string[] = [];
+	for (const attachment of message.attachments) {
+		attachments.push(attachment[1].url);
+	}
+	{
+		let foundCommands = false;
+		for (let i = 0; i < args.length; ++i) {
+			const arg = args[i].toString();
+			if (arg.startsWith("-")) {
+				args.splice(0, i);
+				foundCommands = true;
+				break;
+			}
+			attachments.push(arg);
+		}
+		if (!foundCommands) {
+			message.channel.send("No commands given");
+			return;
+		}
+	}
+	if (attachments.length == 0) {
+		message.channel.send("You have nothing to process");
+	}
+	executeSproc(attachments, args.map(arg => arg.toString())).then((result) => {
+		let index = 0;
+		const attachmentCallback = () => {
+			if (index < result.filePaths.length) {
+				const attachment = new Discord.MessageAttachment(result.filePaths[index]);
+				++index;
+				message.channel.send(attachment).then(attachmentCallback)
+					.catch((error) => {
+						console.log(error);
+					});
+			}
+			else {
+				cleanupSproc(result);
+			}
+		};
+		const output = result.sprocOutput.trim();
+		if (output.length != 0) {
+			message.channel.send(output).then(attachmentCallback);
+		}
+		else {
+			attachmentCallback();
+		}
+	}).catch(error => {
+		message.channel.send(`Error: ${error}`);
+	});
+}
+
 const commands: Record<string, Record<string, Command>> = {
+	"": {
+		"!sproc": { command: execSproc, explanation: "Uses sproc on given images", usage: "[Attach files], !sproc [links] [sproc_commands]" }
+	},
 	"bot-spam": {
 		"!hi": { command: sayHi, explanation: "Says hello", usage: "!hi" },
 		"!hello": { command: sayHi, explanation: "Says hello", usage: "!hello" },
@@ -388,7 +446,7 @@ const helpMessage = (() => {
 		return Object.values(list).map(command => command.usage).join("\n");
 	}
 	for (const channelName in commands) {
-		message.addField(`Commands in channel #${channelName}`, createCommandList(commands[channelName]));
+		message.addField(channelName.length == 0 ? `Commands in all channels` : `Commands in channel #${channelName}`, createCommandList(commands[channelName]));
 	}
 	return message;
 })();
@@ -422,20 +480,25 @@ function help(message: Discord.Message, commandToken: string) {
 	}
 }
 
+
+
 const messageHandler = (message: Discord.Message) => {
 	if (message.channel.type === "text") {
 		const channel = message.channel as Discord.TextChannel;
-		const channelCommands = commands[channel.name];
-		if (channelCommands) {
-			const firstWord = firstToken(message.content);
-			if (firstWord.startsWith(commandFlag)) {
-				const command = channelCommands[firstWord];
-				if (command) {
-					command.command(message, firstWord);
-					return;
+		const findCommand = (commands: Record<string, Command>) => {
+			if (commands) {
+				const firstWord = firstToken(message.content);
+				if (firstWord.startsWith(commandFlag)) {
+					const command = commands[firstWord];
+					if (command) {
+						command.command(message, firstWord);
+						return true;
+					}
 				}
 			}
-		}
+			return false;
+		};
+		findCommand(commands[channel.name]) || findCommand(commands[""]);
 		if (channel.name === "bot-spam" && message.content.length === 1 && message.content.match(/[A-Z]/i)) {
 			const game = hangmanGames[message.author.id];
 			if (game) {
