@@ -367,14 +367,16 @@ const hangman: CommandFunction = (message, commandToken) => {
 	}
 }
 
-function hasAttachPermission(message: Discord.Message) {
+function hasPermission(message: Discord.Message, permission: Discord.PermissionString) {
 	const permissions = message.guild.me.permissionsIn(message.channel);
-	return permissions.has("ATTACH_FILES");
-};
+	return permissions.has(permission);
+}
 
 const execSproc: CommandFunction = (message, commandToken) => {
-	if (!hasAttachPermission(message)) {
-		message.channel.send("I lack attach permission in this channel");
+	if (!hasPermission(message, "ATTACH_FILES")) {
+		if (hasPermission(message, "SEND_MESSAGES")) {
+			message.channel.send("I lack proper permissions in this channel");
+		}
 		return;
 	}
 	const args = BashTokenize.parse(pastFirstToken(message.content, commandToken));
@@ -497,7 +499,7 @@ function help(message: Discord.Message, commandToken: string) {
 
 
 const messageHandler = (message: Discord.Message) => {
-	if (message.channel.type === "text") {
+	if (message.channel.type === "text" && hasPermission(message, "SEND_MESSAGES")) {
 		const channel = message.channel as Discord.TextChannel;
 		const findCommand = (commands: Record<string, Command>) => {
 			if (commands) {
