@@ -1,7 +1,7 @@
 export { Hangman, cleanCharacters }
 
 function cleanCharacters(input: string) {
-	return input.replace(/[\u{0080}-\u{FFFF}]/gu, "?").toUpperCase().replace(/[^? A-Z]/g, "");
+	return input.replace(/[\u{0080}-\u{FFFF}]/gu, "?").toUpperCase().replace("-", " ").replace(/[^ ?A-Z]/g, "");
 }
 
 function countCharacterOccurences(str: string, chars: string) {
@@ -33,6 +33,9 @@ class Hangman {
 		this.charactersGuessed = new Set<string>();
 		if (whitespaceChars) {
 			this.correctCharactersCount = countCharacterOccurences(answer, whitespaceChars);
+			for (const char of whitespaceChars) {
+				this.charactersGuessed.add(char);
+			}
 		}
 		else {
 			this.correctCharactersCount = 0;

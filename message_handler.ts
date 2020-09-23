@@ -254,8 +254,8 @@ const hangman: CommandFunction = (message, commandToken) => {
 				{
 					const game = findGame();
 					if (game) {
-						const whatToGuess = args[1].toUpperCase();
-						if (whatToGuess) {
+						const whatToGuess = args[1]?.toUpperCase();
+						if (whatToGuess && whatToGuess.match(/[A-Z]/)) {
 							const guessed = game.guess(whatToGuess);
 							if (typeof guessed === "string") {
 								message.channel.send(`<@${authorId}>, ${guessed}`);
@@ -282,7 +282,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 							}
 						}
 						else {
-							message.channel.send(`<@${authorId}, you need to guess a letter`);
+							message.channel.send(`<@${authorId}>, you need to guess a letter`);
 						}
 					}
 				}
@@ -307,7 +307,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 							}
 						}
 						else {
-							message.channel.send(`<@${authorId}, you need to guess something`);
+							message.channel.send(`<@${authorId}>, you need to guess something`);
 						}
 					}
 				}
