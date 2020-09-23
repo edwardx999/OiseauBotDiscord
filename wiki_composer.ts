@@ -13,7 +13,10 @@ let composerList: ComposerData[] | undefined;
 let currentFetchRequest: Promise<fetch.Response> | undefined;
 let currentListPromise: Promise<ComposerData[]> | undefined;
 
-function getDatesString(str: string) {
+function getDatesString(str?: string) {
+	if (!str) {
+		return "Unknown dates";
+	}
 	const lastParen = str.lastIndexOf(")");
 	if (lastParen < 0) {
 		return "";
@@ -121,12 +124,12 @@ async function fetchComposerList() {
 									const href = elem.a[0].$.href;
 									const content = elem._;
 									const name = elem.a[0]._;
-									if (title && href) {
+									if (title && href && name) {
 										if ((title as string).indexOf("page does not exist") >= 0) {
-											tempComposerList.push({ name: name, dates: content && getDatesString(content) })
+											tempComposerList.push({ name: name, dates: getDatesString(content) })
 										}
 										else {
-											tempComposerList.push({ name: name, dates: content && getDatesString(content), pageUrl: href })
+											tempComposerList.push({ name: name, dates: getDatesString(content), pageUrl: href })
 										}
 									}
 								}

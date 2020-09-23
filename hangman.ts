@@ -1,7 +1,13 @@
 export { Hangman, cleanCharacters }
 
 function cleanCharacters(input: string) {
-	return input.replace(/[\u{0080}-\u{FFFF}]/gu, "?").toUpperCase().replace("-", " ").replace(/[^ ?A-Z]/g, "");
+	return input
+		.normalize("NFD") // decompose diacritics
+		.replace(/[\u0300-\u036f]/g, "") // remove diacritic marks
+		.replace(/[\u{0080}-\u{FFFF}]/gu, "?") // replace other unicode with question marks
+		.toUpperCase()
+		.replace("-", " ") // replace dash with space
+		.replace(/[^ ?A-Z]/g, ""); // remove everything other than spaces, question marks, and letters
 }
 
 function countCharacterOccurences(str: string, chars: string) {
