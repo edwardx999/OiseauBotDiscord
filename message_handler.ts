@@ -142,7 +142,7 @@ class ComposerHangman extends Hangman {
 
 const hangmanGames: Record<string, ComposerHangman> = {};
 
-function hangmanMessage(game: Hangman, message: string, player: Discord.User) {
+function hangmanMessage(game: Hangman, message: string, player: Discord.User, pastTense: boolean) {
 	const getReplacementChar = (guessed: boolean, i: number) => {
 		const letter = game.answer.substring(i, i + 1);
 		if (guessed) {
@@ -157,10 +157,17 @@ function hangmanMessage(game: Hangman, message: string, player: Discord.User) {
 	};
 	const livesMessage = () => {
 		if (game.currentLives === 0) {
-			return `<@${player.id}>, you lost!`;
+			return `<@${player.id}>, you ran out of lives!`;
 		}
 		else {
-			return `<@${player.id}>, you have ${game.currentLives} lives left.`;
+			const have = pastTense ? "had" : "have";
+			const plural = game.currentLives == 1 ? "life" : "lives";
+			if (game.victory()) {
+				return `<@${player.id}>, you ${have} ${game.currentLives} ${plural} left.`;
+			}
+			else {
+				return `<@${player.id}>, you ${have} ${game.currentLives} ${plural} left.`;
+			}
 		}
 	};
 	return `${message}\n\`\`${game.locationCorrect.map(getReplacementChar).join("")}\`\`\n${livesMessage()}`
@@ -225,12 +232,41 @@ function startGame(message: Discord.Message, difficult: difficulty) {
 			})();
 			const composer = composerData[candidates[choice]];
 			const game = hangmanGames[authorId] = new ComposerHangman(composer.name, composer.dates, 7);
-			message.channel.send(hangmanMessage(game, "Game start", message.author));
+			message.channel.send(hangmanMessage(game, "Game start", message.author, false));
 		}
 		else {
 			message.channel.send("Could not retrieve composer database");
 		}
 	});
+}
+
+function hangmanGuess(message: Discord.Message, game: ComposerHangman, guess: string) {
+	const authorId = message.author.id;
+	const guessed = game.guess(guess);
+	if (typeof guessed === "string") {
+		message.channel.send(`<@${authorId}>, ${guessed}`);
+	}
+	else {
+		if (guessed == 0) {
+			if (game.loss()) {
+				message.channel.send(hangmanMessage(game, `"${guess}" not found, you lost!`, message.author, true) + "\n" + hangmanCompleteMessage(game));
+				delete hangmanGames[authorId]
+			}
+			else {
+				message.channel.send(hangmanMessage(game, `"${guess}" not found`, message.author, false));
+			}
+		}
+		else {
+			const plural = guessed == 1 ? "1 occurence" : `${guessed} occurences`;
+			if (game.victory()) {
+				message.channel.send(hangmanMessage(game, `${plural} found of "${guess}". You win!`, message.author, true) + "\n" + hangmanCompleteMessage(game));
+				delete hangmanGames[authorId];
+			}
+			else {
+				message.channel.send(hangmanMessage(game, `${plural} found of "${guess}"`, message.author, false));
+			}
+		}
+	}
 }
 
 const hangman: CommandFunction = (message, commandToken) => {
@@ -256,30 +292,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 					if (game) {
 						const whatToGuess = args[1]?.toUpperCase();
 						if (whatToGuess && whatToGuess.match(/[A-Z]/)) {
-							const guessed = game.guess(whatToGuess);
-							if (typeof guessed === "string") {
-								message.channel.send(`<@${authorId}>, ${guessed}`);
-							}
-							else {
-								if (guessed == 0) {
-									if (game.loss()) {
-										message.channel.send(hangmanMessage(game, "Not found, you lost!", message.author) + "\n" + hangmanCompleteMessage(game));
-										delete hangmanGames[authorId]
-									}
-									else {
-										message.channel.send(hangmanMessage(game, "Not found", message.author));
-									}
-								}
-								else {
-									if (game.victory()) {
-										message.channel.send(hangmanMessage(game, `${guessed} occurences found. You win!`, message.author) + "\n" + hangmanCompleteMessage(game));
-										delete hangmanGames[authorId];
-									}
-									else {
-										message.channel.send(hangmanMessage(game, `${guessed} occurences found`, message.author));
-									}
-								}
-							}
+							hangmanGuess(message, game, whatToGuess);
 						}
 						else {
 							message.channel.send(`<@${authorId}>, you need to guess a letter`);
@@ -296,13 +309,16 @@ const hangman: CommandFunction = (message, commandToken) => {
 						if (whatToGuess.length > 0) {
 							const success = game.solve(whatToGuess);
 							if (success) {
-								message.channel.send(hangmanMessage(game, `You win!`, message.author) + "\n" + hangmanCompleteMessage(game));
+								message.channel.send(hangmanMessage(game, `You win!`, message.author, true) + "\n" + hangmanCompleteMessage(game));
 								delete hangmanGames[authorId];
 							}
 							else {
-								message.channel.send(hangmanMessage(game, "That is wrong!", message.author));
 								if (game.loss()) {
+									message.channel.send(hangmanMessage(game, "That is wrong! You lose.", message.author, true) + "\n" + hangmanCompleteMessage(game));
 									delete hangmanGames[authorId];
+								}
+								else {
+									message.channel.send(hangmanMessage(game, "That is wrong!", message.author, false));
 								}
 							}
 						}
@@ -324,7 +340,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 				{
 					const game = findGame();
 					if (game) {
-						message.channel.send(hangmanMessage(game, "You lost!", message.author) + "\n" + hangmanCompleteMessage(game));
+						message.channel.send(hangmanMessage(game, "You lost!", message.author, true) + "\n" + hangmanCompleteMessage(game));
 						delete hangmanGames[authorId];
 					}
 				}
@@ -333,7 +349,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 				{
 					message.channel.send(new Discord.MessageEmbed()
 						.setTitle("Hangman Help").setColor("#654321")
-						.addField("Commands", "Start Game: !hangman [difficulty: easiest, easy, medium, hard, hardest]\nGuess: !hangman guess <letter>\nSolve: !hangman solve <answer>\nHint: !hangman hint\nGive Up: !hangman giveup"));
+						.addField("Commands", "Start Game: !hangman [difficulty: easiest, easy, medium, hard, hardest]\nGuess: !hangman guess <letter>\nGuess (shorthand): <single letter>\nSolve: !hangman solve <answer>\nHint: !hangman hint\nGive Up: !hangman giveup"));
 				}
 				break;
 			case "easiest":
@@ -416,7 +432,15 @@ const messageHandler = (message: Discord.Message) => {
 				const command = channelCommands[firstWord];
 				if (command) {
 					command.command(message, firstWord);
+					return;
 				}
+			}
+		}
+		if (channel.name === "bot-spam" && message.content.length === 1 && message.content.match(/[A-Z]/i)) {
+			const game = hangmanGames[message.author.id];
+			if (game) {
+				const whatToGuess = message.content.toUpperCase();
+				hangmanGuess(message, game, whatToGuess);
 			}
 		}
 	}
