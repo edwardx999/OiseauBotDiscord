@@ -44,17 +44,21 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 				});
 			});
 		}
-		const outputPath = tempFolder + pathSeparator +"output";
+		const outputPath = tempFolder + pathSeparator + "output";
 		await fs.promises.mkdir(outputPath);
-		const output = await new Promise<string>((resolve, reject) =>
-			cp.exec(`.${pathSeparator}sproc_lim ${tempFolder} ${commands.join(" ")}`, (error, stdout, stderr) => {
-				if (error) {
+		const output = await new Promise<string>((resolve, reject) => {
+			const sproc = cp.spawn(`.${pathSeparator}sproc_lim`, [tempFolder].concat(commands));
+			let stdout = "";
+			sproc.stdout.on("data", data => stdout = stdout + data);
+			sproc.on("close", code => {
+				if (code != 0) {
 					reject(stdout);
 				}
 				else {
 					resolve(stdout);
 				}
-			}));
+			});
+		});
 		const outputFiles = (await fs.promises.readdir(outputPath)).map(filename => outputPath + pathSeparator + filename);
 		return { filePaths: outputFiles, folderToCleanUp: tempFolder, sprocOutput: output };
 	} catch (e) {
