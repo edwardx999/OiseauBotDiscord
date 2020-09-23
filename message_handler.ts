@@ -367,8 +367,16 @@ const hangman: CommandFunction = (message, commandToken) => {
 	}
 }
 
+function hasAttachPermission(message: Discord.Message) {
+	const permissions = message.guild.me.permissionsIn(message.channel);
+	return permissions.has("ATTACH_FILES");
+};
 
 const execSproc: CommandFunction = (message, commandToken) => {
+	if (!hasAttachPermission(message)) {
+		message.channel.send("I lack attach permission in this channel");
+		return;
+	}
 	const args = BashTokenize.parse(pastFirstToken(message.content, commandToken));
 	const attachments: string[] = [];
 	for (const attachment of message.attachments) {
