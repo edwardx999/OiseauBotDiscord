@@ -387,8 +387,14 @@ const execSproc: CommandFunction = (message, commandToken) => {
 	for (const attachment of message.attachments) {
 		attachments.push(attachment[1].url);
 	}
-	for (const arg of args) {
-		if (typeof arg !== "string") {
+	for (let i = 0; i < args.length; ++i) {
+		const arg = args[i];
+		// @ts-ignore
+		if (arg.op === "glob") {
+			// @ts-ignore
+			args[i] = arg.pattern;
+		}
+		else if (typeof arg !== "string") {
 			message.channel.send("Illegal tokens detected").catch(catchHandler);
 			return;
 		}
