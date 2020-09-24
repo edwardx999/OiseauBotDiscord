@@ -19,6 +19,7 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 		const downloadJobs = fileUrls.map((url, index) => {
 			return fetch.default(url);
 		});
+		const paddingDigits = downloadJobs.length.toString().length;
 		for (let i = 0; i < downloadJobs.length; ++i) {
 			const request = await downloadJobs[i];
 			const path = (() => {
@@ -28,7 +29,7 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 					case "image/jpeg":
 					case "image/tiff":
 					case "image/bmp":
-						return `${tempFolder}/${i}.${type.substring(6)}`;
+						return `${tempFolder}/${i.toString().padStart(paddingDigits, "0")}.${type.substring(6)}`;
 					default:
 						throw "Unsupported file type";
 				}
@@ -64,7 +65,7 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 				}
 			});
 		});
-		const outputFiles = (await fs.promises.readdir(outputPath)).map(filename => outputPath + pathSeparator + filename);
+		const outputFiles = (await fs.promises.readdir(outputPath)).map(filename => outputPath + pathSeparator + filename).sort();
 		return { filePaths: outputFiles, folderToCleanUp: tempFolder, sprocOutput: output };
 	} catch (e) {
 		await fs.promises.rmdir(tempFolder, { recursive: true });
