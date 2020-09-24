@@ -1,7 +1,6 @@
 ﻿export { messageHandler }
 import * as Discord from "discord.js";
 import * as StringSimilarity from "string-similarity";
-import * as BashTokenize from "shell-quote";
 import { Hangman, cleanCharacters } from "./hangman";
 import { fetchComposerList, ComposerData, fetchComposerPageSize } from "./wiki_composer";
 import { executeSproc, cleanupSproc } from "./sproc";
@@ -49,6 +48,22 @@ function firstToken(words: string) {
 function tokenize(words: string) {
 	const whiteSpaceRegex = /\s+/;
 	return words.split(whiteSpaceRegex).filter(value => value.length > 0);
+}
+
+function quoteTokenize(words: string) {
+	var regex = /[^\s"]+|"(\\"|[^"]*)"/gi;
+	var tokens: string[] = [];
+	while (true) {
+		var match = regex.exec(words);
+		if (match != null) {
+			//index 1 is the quoted group, otherwise the whole group
+			tokens.push(match[1] ? match[1] : match[0]);
+		}
+		else {
+			break;
+		}
+	}
+	return tokens;
 }
 
 const sayHi: CommandFunction = (message, commandToken) => {
@@ -382,22 +397,10 @@ const execSproc: CommandFunction = (message, commandToken) => {
 		}
 		return;
 	}
-	const args = BashTokenize.parse(pastFirstToken(message.content, commandToken));
+	const args = quoteTokenize(pastFirstToken(message.content, commandToken));
 	const attachments: string[] = [];
 	for (const attachment of message.attachments) {
 		attachments.push(attachment[1].url);
-	}
-	for (let i = 0; i < args.length; ++i) {
-		const arg = args[i];
-		// @ts-ignore
-		if (arg.op === "glob") {
-			// @ts-ignore
-			args[i] = arg.pattern;
-		}
-		else if (typeof arg !== "string") {
-			message.channel.send("Illegal tokens detected").catch(catchHandler);
-			return;
-		}
 	}
 	{
 		let foundCommands = false;

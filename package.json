@@ -15,14 +15,12 @@
     "@types/node-fetch": "2.5.7",
     "@types/xml2js": "0.4.5",
     "@types/string-similarity": "3.0.0",
-    "@types/shell-quote": "1.7.0",
     "typescript": "^3.2.2"
   },
   "dependencies": {
     "discord.js": "^12.3.1",
     "encoding": "0.1.13",
     "node-fetch": "2.6.1",
-    "shell-quote": "^1.7.2",
     "string-similarity": "^4.0.2",
     "uws": "^100.0.1",
     "xml2js": "0.4.23"
