@@ -8,6 +8,10 @@ import { executeSproc, cleanupSproc } from "./sproc";
 
 type CommandFunction = (message: Discord.Message, commandToken: string) => any;
 
+const catchHandler = (err: any) => {
+	console.error(err);
+}
+
 interface Command {
 	command: CommandFunction;
 	explanation: string;
@@ -49,11 +53,11 @@ function tokenize(words: string) {
 
 const sayHi: CommandFunction = (message, commandToken) => {
 	const greeting = capitalizeFirstLetter(removeCommandFlag(commandToken));
-	message.channel.send({ content: `${greeting} <@${message.author.id}>` });
+	message.channel.send({ content: `${greeting} <@${message.author.id}>` }).catch(catchHandler);
 };
 
 function noRoleArgumentResponse(message: Discord.Message) {
-	return message.channel.send(`<@${message.author.id}>, you must provide a role argument`);
+	return message.channel.send(`<@${message.author.id}>, you must provide a role argument`).catch(catchHandler);
 }
 
 function noRoleExistReponse(message: Discord.Message, roleName: string) {
@@ -61,9 +65,9 @@ function noRoleExistReponse(message: Discord.Message, roleName: string) {
 	const rolesArray = roles.map(role => role.name);
 	const nearest = StringSimilarity.findBestMatch(roleName, rolesArray);
 	if (nearest.bestMatchIndex < rolesArray.length && nearest.bestMatch.rating > 0 && nearest.bestMatch.target.substring(0, 1) !== "@") {
-		return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${rolesArray[nearest.bestMatchIndex]}?`);
+		return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${rolesArray[nearest.bestMatchIndex]}?`).catch(catchHandler);
 	}
-	return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist`)
+	return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist`).catch(catchHandler);
 }
 
 function findRole(roles: Discord.RoleManager, roleName: string) {
@@ -86,15 +90,15 @@ const giveRole: CommandFunction = (message, commandToken) => {
 	if (role) {
 		const userRoles = guild.member(message.author.id).roles;
 		if (findRoleId(userRoles, role.id)) {
-			message.channel.send(`<@${message.author.id}>, you already have role ${desiredRoleName}`);
+			message.channel.send(`<@${message.author.id}>, you already have role ${desiredRoleName}`).catch(catchHandler);
 		}
 		else {
 			userRoles.add(role).then(
 				() => {
-					message.channel.send(`<@${message.author.id}>, you have been given role ${desiredRoleName}`);
+					message.channel.send(`<@${message.author.id}>, you have been given role ${desiredRoleName}`).catch(catchHandler);
 				},
 				() => {
-					message.channel.send(`<@${message.author.id}>, I cannot give you role ${desiredRoleName}`);
+					message.channel.send(`<@${message.author.id}>, I cannot give you role ${desiredRoleName}`).catch(catchHandler);
 				});
 		}
 	}
@@ -106,7 +110,6 @@ const giveRole: CommandFunction = (message, commandToken) => {
 const takeRole: CommandFunction = (message, commandToken) => {
 	const guild = message.guild;
 	const roles = guild.roles;
-	const text = message.content;
 	const desiredRoleName = pastFirstToken(message.content, commandToken).trim();
 	if (desiredRoleName.length == 0) {
 		noRoleArgumentResponse(message);
@@ -115,15 +118,15 @@ const takeRole: CommandFunction = (message, commandToken) => {
 	if (role) {
 		const userRoles = guild.member(message.author.id).roles;
 		if (!findRoleId(userRoles, role.id)) {
-			message.channel.send(`<@${message.author.id}>, you do not have role ${desiredRoleName}`);
+			message.channel.send(`<@${message.author.id}>, you do not have role ${desiredRoleName}`).catch(catchHandler);
 		}
 		else {
 			userRoles.remove(role).then(
 				() => {
-					message.channel.send(`<@${message.author.id}>, you have lost role ${desiredRoleName}`);
+					message.channel.send(`<@${message.author.id}>, you have lost role ${desiredRoleName}`).catch(catchHandler);
 				},
 				() => {
-					message.channel.send(`<@${message.author.id}>, I cannot remove role ${desiredRoleName}`);
+					message.channel.send(`<@${message.author.id}>, I cannot remove role ${desiredRoleName}`).catch(catchHandler);
 				});
 		}
 	}
@@ -189,7 +192,7 @@ type difficulty = "easiest" | "easy" | "medium" | "hard" | "hardest"
 function startGame(message: Discord.Message, difficult: difficulty) {
 	const authorId = message.author.id;
 	if (hangmanGames[authorId]) {
-		message.channel.send(`<@${authorId}>, you already have a game ongoing`);
+		message.channel.send(`<@${authorId}>, you already have a game ongoing`).catch(catchHandler);
 	}
 	fetchComposerList().then(async (composerData) => {
 		if (composerData && composerData.length > 0) {
@@ -251,21 +254,21 @@ function hangmanGuess(message: Discord.Message, game: ComposerHangman, guess: st
 	else {
 		if (guessed == 0) {
 			if (game.loss()) {
-				message.channel.send(hangmanMessage(game, `"${guess}" not found, you lost!`, message.author, true) + "\n" + hangmanCompleteMessage(game));
+				message.channel.send(hangmanMessage(game, `"${guess}" not found, you lost!`, message.author, true) + "\n" + hangmanCompleteMessage(game)).catch(catchHandler);
 				delete hangmanGames[authorId]
 			}
 			else {
-				message.channel.send(hangmanMessage(game, `"${guess}" not found`, message.author, false));
+				message.channel.send(hangmanMessage(game, `"${guess}" not found`, message.author, false)).catch(catchHandler);
 			}
 		}
 		else {
 			const plural = guessed == 1 ? "1 occurence" : `${guessed} occurences`;
 			if (game.victory()) {
-				message.channel.send(hangmanMessage(game, `${plural} found of "${guess}". You win!`, message.author, true) + "\n" + hangmanCompleteMessage(game));
+				message.channel.send(hangmanMessage(game, `${plural} found of "${guess}". You win!`, message.author, true) + "\n" + hangmanCompleteMessage(game)).catch(catchHandler);
 				delete hangmanGames[authorId];
 			}
 			else {
-				message.channel.send(hangmanMessage(game, `${plural} found of "${guess}"`, message.author, false));
+				message.channel.send(hangmanMessage(game, `${plural} found of "${guess}"`, message.author, false)).catch(catchHandler);
 			}
 		}
 	}
@@ -284,7 +287,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 			if (game) {
 				return game;
 			}
-			message.channel.send(`<@${authorId}>, you do not have a game in progress`);
+			message.channel.send(`<@${authorId}>, you do not have a game in progress`).catch(catchHandler);
 		}
 		switch (command) {
 			case "g":
@@ -297,7 +300,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 							hangmanGuess(message, game, whatToGuess);
 						}
 						else {
-							message.channel.send(`<@${authorId}>, you need to guess a letter`);
+							message.channel.send(`<@${authorId}>, you need to guess a letter`).catch(catchHandler);
 						}
 					}
 				}
@@ -311,21 +314,21 @@ const hangman: CommandFunction = (message, commandToken) => {
 						if (whatToGuess.length > 0) {
 							const success = game.solve(whatToGuess);
 							if (success) {
-								message.channel.send(hangmanMessage(game, `You win!`, message.author, true) + "\n" + hangmanCompleteMessage(game));
+								message.channel.send(hangmanMessage(game, `You win!`, message.author, true) + "\n" + hangmanCompleteMessage(game)).catch(catchHandler);
 								delete hangmanGames[authorId];
 							}
 							else {
 								if (game.loss()) {
-									message.channel.send(hangmanMessage(game, "That is wrong! You lose.", message.author, true) + "\n" + hangmanCompleteMessage(game));
+									message.channel.send(hangmanMessage(game, "That is wrong! You lose.", message.author, true) + "\n" + hangmanCompleteMessage(game)).catch(catchHandler);
 									delete hangmanGames[authorId];
 								}
 								else {
-									message.channel.send(hangmanMessage(game, "That is wrong!", message.author, false));
+									message.channel.send(hangmanMessage(game, "That is wrong!", message.author, false)).catch(catchHandler);
 								}
 							}
 						}
 						else {
-							message.channel.send(`<@${authorId}>, you need to guess something`);
+							message.channel.send(`<@${authorId}>, you need to guess something`).catch(catchHandler);
 						}
 					}
 				}
@@ -334,7 +337,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 				{
 					const game = findGame();
 					if (game) {
-						message.channel.send(`<@${authorId}> hint: ${game.dates}`);
+						message.channel.send(`<@${authorId}> hint: ${game.dates}`).catch(catchHandler);
 					}
 				}
 				break;
@@ -342,7 +345,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 				{
 					const game = findGame();
 					if (game) {
-						message.channel.send(hangmanMessage(game, "You lost!", message.author, true) + "\n" + hangmanCompleteMessage(game));
+						message.channel.send(hangmanMessage(game, "You lost!", message.author, true) + "\n" + hangmanCompleteMessage(game)).catch(catchHandler);
 						delete hangmanGames[authorId];
 					}
 				}
@@ -351,7 +354,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 				{
 					message.channel.send(new Discord.MessageEmbed()
 						.setTitle("Hangman Help").setColor("#654321")
-						.addField("Commands", "Start Game: !hangman [difficulty: easiest, easy, medium, hard, hardest]\nGuess: !hangman guess <letter>\nGuess (shorthand): <single letter>\nSolve: !hangman solve <answer>\nHint: !hangman hint\nGive Up: !hangman giveup"));
+						.addField("Commands", "Start Game: !hangman [difficulty: easiest, easy, medium, hard, hardest]\nGuess: !hangman guess <letter>\nGuess (shorthand): <single letter>\nSolve: !hangman solve <answer>\nHint: !hangman hint\nGive Up: !hangman giveup")).catch(catchHandler);
 				}
 				break;
 			case "easiest":
@@ -362,7 +365,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 				startGame(message, command);
 				break;
 			default:
-				message.channel.send(`<@${authorId}>, ${command} is not a hangman command`);
+				message.channel.send(`<@${authorId}>, ${command} is not a hangman command`).catch(catchHandler);
 		}
 	}
 }
@@ -375,7 +378,7 @@ function hasPermission(message: Discord.Message, permission: Discord.PermissionS
 const execSproc: CommandFunction = (message, commandToken) => {
 	if (!hasPermission(message, "ATTACH_FILES")) {
 		if (hasPermission(message, "SEND_MESSAGES")) {
-			message.channel.send("I lack proper permissions in this channel");
+			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
 		}
 		return;
 	}
@@ -386,7 +389,7 @@ const execSproc: CommandFunction = (message, commandToken) => {
 	}
 	for (const arg of args) {
 		if (typeof arg !== "string") {
-			message.channel.send("Illegal tokens detected");
+			message.channel.send("Illegal tokens detected").catch(catchHandler);
 			return;
 		}
 	}
@@ -402,12 +405,12 @@ const execSproc: CommandFunction = (message, commandToken) => {
 			attachments.push(arg);
 		}
 		if (!foundCommands) {
-			message.channel.send("No commands given");
+			message.channel.send("No commands given").catch(catchHandler);
 			return;
 		}
 	}
 	if (attachments.length == 0) {
-		message.channel.send("You have nothing to process");
+		message.channel.send("You have nothing to process").catch(catchHandler);
 	}
 	executeSproc(attachments, args.map(arg => arg.toString())).then((result) => {
 		let index = 0;
@@ -417,6 +420,12 @@ const execSproc: CommandFunction = (message, commandToken) => {
 				++index;
 				message.channel.send(attachment).then(attachmentCallback)
 					.catch((error) => {
+						if (error instanceof Discord.DiscordAPIError) {
+							const attachmentTooLarge = 40005;
+							if (error.code === attachmentTooLarge) {
+								message.channel.send("(Result too large)").then(attachmentCallback).catch(catchHandler);
+							}
+						}
 						console.log(error);
 					});
 			}
@@ -426,13 +435,13 @@ const execSproc: CommandFunction = (message, commandToken) => {
 		};
 		const output = result.sprocOutput.trim();
 		if (output.length != 0) {
-			message.channel.send(output).then(attachmentCallback);
+			message.channel.send(output).then(attachmentCallback).catch(catchHandler);
 		}
 		else {
 			attachmentCallback();
 		}
 	}).catch(error => {
-		message.channel.send(`Error: ${error}`);
+		message.channel.send(`Error: ${error}`).catch(catchHandler);
 	});
 }
 
@@ -470,7 +479,7 @@ const helpMessage = (() => {
 function help(message: Discord.Message, commandToken: string) {
 	const args = tokenize(pastFirstToken(message.content, commandToken));
 	if (args.length == 0) {
-		message.channel.send(helpMessage);
+		message.channel.send(helpMessage).catch(catchHandler);
 	}
 	else {
 		const commandName = args[0];
@@ -488,11 +497,11 @@ function help(message: Discord.Message, commandToken: string) {
 					.setColor("#123456")
 					.setTitle("OiseauBot Help")
 					.addField(`Help for ${lookupName} in channel ${channelName}`, `${command.usage}\n${command.explanation}`);
-				message.channel.send(commandHelpMessage);
+				message.channel.send(commandHelpMessage).catch(catchHandler);
 				return;
 			}
 		}
-		message.channel.send(`Command ${commandName} does not exist`);
+		message.channel.send(`Command ${commandName} does not exist`).catch(catchHandler);
 	}
 }
 
