@@ -465,14 +465,18 @@ const listRoles: CommandFunction = (message, commandToken) => {
 	const roles = guild.roles;
 	const bot = message.client.user;
 	const botRole = guild.me.roles.highest;
-	const list = roles.cache.map((role) => {
-		if (role.position < botRole.position && role.name != "@everyone") {
-			return role.name;
-		}
-		return null;
-	}).filter(v => v != null).join("\n");
+	const list = roles.cache.array()
+		.sort((role1, role2) => role2.position - role1.position)
+		.map((role) => {
+			if (role.position < botRole.position && role.name != "@everyone") {
+				return role.name;
+			}
+			return null;
+		}).filter(v => v != null).join("\n");
 	const response = list.length > 0 ?
-		new Discord.MessageEmbed().setTitle("List of roles").setColor("#FEDCBA").addField("Roles I Can Give You", list) :
+		(hasChannelPermission(message, "EMBED_LINKS") ?
+			new Discord.MessageEmbed().setColor("#FEDCBA").addField("Roles I Can Give You", list) :
+			"**Roles I Can Give You**\n" + list) :
 		noRolesMessage;
 	message.channel.send(response).catch(catchHandler);
 }
@@ -492,7 +496,7 @@ const commands: Record<string, Record<string, Command>> = {
 	{
 		"!giveme": { command: giveRole, explanation: "Gives you a role", usage: "!giveme <role>" },
 		"!takeaway": { command: takeRole, explanation: "Takes a role from you", usage: "!takeaway <role>" },
-		"!rolelist": { command: listRoles, explanation: "List the roles I can give", usage: "!rolelist" }
+		"!roles": { command: listRoles, explanation: "List the roles I can give", usage: "!roles" }
 	}
 };
 
