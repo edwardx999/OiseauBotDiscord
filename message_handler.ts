@@ -194,15 +194,10 @@ function hangmanMessage(game: Hangman, message: string, player: Discord.User, pa
 }
 
 function hangmanCompleteMessage(game: ComposerHangman) {
-	if (game.realName === game.answer) {
-		return `The answer was ${game.answer} ${game.dates}`;
-	}
-	else {
-		return `The answer was ${game.answer} (${game.realName}) (${game.dates})`;
-	}
+	return `The answer was ${game.answer} (${game.realName}) (${game.dates})`;
 }
 
-type difficulty = "easiest" | "easy" | "medium" | "hard" | "hardest"
+type difficulty = "easiest" | "easy" | "medium" | "hard" | "hardest";
 
 function startGame(message: Discord.Message, difficult: difficulty) {
 	const authorId = message.author.id;
@@ -383,16 +378,21 @@ const hangman: CommandFunction = (message, commandToken) => {
 				message.channel.send(`<@${authorId}>, ${command} is not a hangman command`).catch(catchHandler);
 		}
 	}
+};
+
+function hasGuildPermission(message: Discord.Message, permission: Discord.PermissionString) {
+	const permissions = message.guild.me.permissions;
+	return permissions.has(permission);
 }
 
-function hasPermission(message: Discord.Message, permission: Discord.PermissionString) {
+function hasChannelPermission(message: Discord.Message, permission: Discord.PermissionString) {
 	const permissions = message.guild.me.permissionsIn(message.channel);
 	return permissions.has(permission);
 }
 
 const execSproc: CommandFunction = (message, commandToken) => {
-	if (!hasPermission(message, "ATTACH_FILES")) {
-		if (hasPermission(message, "SEND_MESSAGES")) {
+	if (!hasChannelPermission(message, "ATTACH_FILES")) {
+		if (hasChannelPermission(message, "SEND_MESSAGES")) {
 			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
 		}
 		return;
@@ -452,6 +452,29 @@ const execSproc: CommandFunction = (message, commandToken) => {
 	}).catch(error => {
 		message.channel.send(`Error: ${error}`).catch(catchHandler);
 	});
+};
+
+const noRolesMessage = "I can give you no roles";
+
+const listRoles: CommandFunction = (message, commandToken) => {
+	if (!hasGuildPermission(message, "MANAGE_ROLES")) {
+		message.channel.send(noRolesMessage).catch(catchHandler);
+		return;
+	}
+	const guild = message.guild;
+	const roles = guild.roles;
+	const bot = message.client.user;
+	const botRole = guild.me.roles.highest;
+	const list = roles.cache.map((role) => {
+		if (role.position < botRole.position && role.name != "@everyone") {
+			return role.name;
+		}
+		return null;
+	}).filter(v => v != null).join("\n");
+	const response = list.length > 0 ?
+		new Discord.MessageEmbed().setTitle("List of roles").setColor("#FEDCBA").addField("Roles I Can Give You", list) :
+		noRolesMessage;
+	message.channel.send(response).catch(catchHandler);
 }
 
 const commands: Record<string, Record<string, Command>> = {
@@ -468,9 +491,10 @@ const commands: Record<string, Record<string, Command>> = {
 	"new-roles":
 	{
 		"!giveme": { command: giveRole, explanation: "Gives you a role", usage: "!giveme <role>" },
-		"!takeaway": { command: takeRole, explanation: "Takes a role from you", usage: "!takeaway <role>" }
+		"!takeaway": { command: takeRole, explanation: "Takes a role from you", usage: "!takeaway <role>" },
+		"!rolelist": { command: listRoles, explanation: "List the roles I can give", usage: "!rolelist" }
 	}
-}
+};
 
 const helpMessage = (() => {
 	const message = new Discord.MessageEmbed()
@@ -512,12 +536,10 @@ function help(message: Discord.Message, commandToken: string) {
 		}
 		message.channel.send(`Command ${commandName} does not exist`).catch(catchHandler);
 	}
-}
-
-
+};
 
 const messageHandler = (message: Discord.Message) => {
-	if (message.channel.type === "text" && hasPermission(message, "SEND_MESSAGES")) {
+	if (message.channel.type === "text" && hasChannelPermission(message, "SEND_MESSAGES")) {
 		const channel = message.channel as Discord.TextChannel;
 		const findCommand = (commands: Record<string, Command>) => {
 			if (commands) {

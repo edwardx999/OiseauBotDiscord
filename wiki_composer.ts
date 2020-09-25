@@ -13,19 +13,21 @@ let composerList: ComposerData[] | undefined;
 let currentFetchRequest: Promise<fetch.Response> | undefined;
 let currentListPromise: Promise<ComposerData[]> | undefined;
 
+const unknownDates = "Unknown dates";
+
 function getDatesString(str?: string) {
 	if (!str) {
-		return "Unknown dates";
+		return unknownDates;
 	}
 	const lastParen = str.lastIndexOf(")");
 	if (lastParen < 0) {
-		return "";
+		return unknownDates;
 	}
 	const firstParen = str.lastIndexOf("(");
 	if (firstParen >= 0 && firstParen < lastParen) {
 		return str.substring(firstParen + 1, lastParen);
 	}
-	return "";
+	return unknownDates;
 }
 
 async function fetchComposerPageSize(href?: string) {
