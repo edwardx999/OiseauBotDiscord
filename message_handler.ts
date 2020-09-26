@@ -421,34 +421,33 @@ const execSproc: CommandFunction = (message, commandToken) => {
 	if (attachments.length == 0) {
 		message.channel.send("You have nothing to process").catch(catchHandler);
 	}
-	executeSproc(attachments, args.map(arg => arg.toString())).then((result) => {
-		let index = 0;
-		const attachmentCallback = () => {
-			if (index < result.filePaths.length) {
-				const attachment = new Discord.MessageAttachment(result.filePaths[index]);
-				++index;
-				message.channel.send(attachment).then(attachmentCallback)
-					.catch((error) => {
-						if (error instanceof Discord.DiscordAPIError) {
-							const attachmentTooLarge = 40005;
-							if (error.code === attachmentTooLarge) {
-								message.channel.send("(Result too large)").then(attachmentCallback).catch(catchHandler);
-							}
-						}
-						console.log(error);
-					});
-			}
-			else {
-				cleanupSproc(result);
-			}
-		};
+	executeSproc(attachments, args.map(arg => arg.toString())).then(async (result) => {
 		const output = result.sprocOutput.trim();
 		if (output.length != 0) {
-			message.channel.send(output).then(attachmentCallback).catch(catchHandler);
+			try {
+				await message.channel.send(output);
+			} catch (ex) {
+				catchHandler(ex);
+			}
 		}
-		else {
-			attachmentCallback();
+		for (let i = 0; i < result.filePaths.length; ++i) {
+			try {
+				const attachment = new Discord.MessageAttachment(result.filePaths[i]);
+				await message.channel.send(attachment);
+			}
+			catch (error) {
+				if (error instanceof Discord.DiscordAPIError) {
+					try {
+						const attachmentTooLarge = 40005;
+						const errorMessage = error.code === attachmentTooLarge ? "(Result too large)" : `Error: ${error.message}`;
+						await message.channel.send(errorMessage);
+					} catch (ex) {
+						catchHandler(ex);
+					}
+				}
+			}
 		}
+		cleanupSproc(result);
 	}).catch(error => {
 		message.channel.send(`Error: ${error}`).catch(catchHandler);
 	});
