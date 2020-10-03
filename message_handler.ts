@@ -172,7 +172,8 @@ class ComposerHangman extends Hangman {
 			return this.dates;
 		}
 		if (this.categories === undefined) {
-			this.categories = await fetchComposerCategories(this.url);
+			const list = await fetchComposerCategories(this.url);
+			this.categories = list.filter(name => name.indexOf(this.realName) < 0 && name.indexOf("Wikipedia") < 0);
 		}
 		if (this.categories.length === 0) {
 			const temp = this.categories;

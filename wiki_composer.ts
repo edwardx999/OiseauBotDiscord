@@ -82,7 +82,7 @@ async function fetchComposerCategories(href?: string) {
 		}
 		const prefix = "/wiki/";
 		if (href.startsWith(prefix)) {
-			const reqUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&titles=${href.substring(prefix.length)}&prop=categories`;
+			const reqUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&titles=${href.substring(prefix.length)}&prop=categories&cllimit=max`;
 			const response = await fetch.default(reqUrl, {
 				method: "GET",
 				headers: wikiApiHeader
@@ -92,16 +92,19 @@ async function fetchComposerCategories(href?: string) {
 				const parsed = JSON.parse(body);
 				const pages = parsed?.query?.pages;
 				for (const page in pages) {
-					const revisions = pages[page].categories;
-					if (Array.isArray(revisions)) {
+					const list = pages[page].categories;
+					if (Array.isArray(list)) {
 						const categories: string[] = [];
-						for (const cat of revisions) {
-							if (typeof cat === "string") {
-								if (cat.startsWith(categoryPrefix)) {
-									categories.push(cat.substring(categoryPrefix.length));
-								}
-								else {
-									categories.push(cat);
+						for (const cat of list) {
+							if (typeof cat === "object") {
+								const name = cat.title;
+								if (typeof name === "string") {
+									if (name.startsWith(categoryPrefix)) {
+										categories.push(name.substring(categoryPrefix.length));
+									}
+									else {
+										categories.push(name);
+									}
 								}
 							}
 						}
