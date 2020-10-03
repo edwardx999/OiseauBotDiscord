@@ -93,10 +93,9 @@ async function fetchComposerCategories(href?: string) {
 				const pages = parsed?.query?.pages;
 				for (const page in pages) {
 					const revisions = pages[page].categories;
-					if (typeof revisions === "object" && revisions.length > 0) {
+					if (Array.isArray(revisions)) {
 						const categories: string[] = [];
-						for (let i = 0; i < revisions.length; ++i) {
-							const cat = revisions[i].title;
+						for (const cat of revisions) {
 							if (typeof cat === "string") {
 								if (cat.startsWith(categoryPrefix)) {
 									categories.push(cat.substring(categoryPrefix.length));
