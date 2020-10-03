@@ -1,6 +1,6 @@
 import * as fetch from "node-fetch";
 import * as xml from "xml2js"
-export { fetchComposerList, ComposerData, fetchComposerPageSize }
+export { fetchComposerList, ComposerData, fetchComposerPageSize, fetchComposerCategories }
 interface ComposerData {
 	name: string;
 	dates?: string;
@@ -30,6 +30,8 @@ function getDatesString(str?: string) {
 	return unknownDates;
 }
 
+const wikiApiHeader = { "User-Agent": "Oiseaubot (https://github.com/edwardx999)" };
+
 async function fetchComposerPageSize(href?: string) {
 	try {
 		if (!href) {
@@ -40,9 +42,7 @@ async function fetchComposerPageSize(href?: string) {
 			const reqUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&titles=${href.substring(prefix.length)}&prop=revisions&rvprop=size`;
 			const response = await fetch.default(reqUrl, {
 				method: "GET",
-				headers: {
-					"User-Agent": "Oiseaubot (https://github.com/edwardx999)"
-				}
+				headers: wikiApiHeader
 			});
 			if (response.ok) {
 				const body = await response.textConverted();
@@ -71,6 +71,51 @@ async function fetchComposerPageSize(href?: string) {
 	} catch {
 		return 0;
 	}
+}
+
+const categoryPrefix = "Category:";
+
+async function fetchComposerCategories(href?: string) {
+	try {
+		if (!href) {
+			return [];
+		}
+		const prefix = "/wiki/";
+		if (href.startsWith(prefix)) {
+			const reqUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&titles=${href.substring(prefix.length)}&prop=categories`;
+			const response = await fetch.default(reqUrl, {
+				method: "GET",
+				headers: wikiApiHeader
+			});
+			if (response.ok) {
+				const body = await response.textConverted();
+				const parsed = JSON.parse(body);
+				const pages = parsed?.query?.pages;
+				for (const page in pages) {
+					const revisions = pages[page].categories;
+					if (typeof revisions === "object" && revisions.length > 0) {
+						const categories: string[] = [];
+						for (let i = 0; i < revisions.length; ++i) {
+							const cat = revisions[i].title;
+							if (typeof cat === "string") {
+								if (cat.startsWith(categoryPrefix)) {
+									categories.push(cat.substring(categoryPrefix.length));
+								}
+								else {
+									categories.push(cat);
+								}
+							}
+						}
+						return categories;
+					}
+					break;
+				}
+			}
+		}
+	}
+	catch {
+	}
+	return [];
 }
 
 async function fetchComposerList() {

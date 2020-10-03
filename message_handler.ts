@@ -2,7 +2,7 @@
 import * as Discord from "discord.js";
 import * as StringSimilarity from "string-similarity";
 import { Hangman, cleanCharacters } from "./hangman";
-import { fetchComposerList, ComposerData, fetchComposerPageSize } from "./wiki_composer";
+import { fetchComposerList, ComposerData, fetchComposerPageSize, fetchComposerCategories } from "./wiki_composer";
 import { executeSproc, cleanupSproc } from "./sproc";
 
 type CommandFunction = (message: Discord.Message, commandToken: string) => any;
@@ -153,10 +153,39 @@ const takeRole: CommandFunction = (message, commandToken) => {
 class ComposerHangman extends Hangman {
 	readonly realName: string;
 	readonly dates: string;
-	constructor(realname: string, dates: string, lives: number) {
+	readonly url: string;
+	private categories?: string[];
+	private dateHintUsed: boolean;
+	private hintsUsed: string[];
+	constructor(realname: string, dates: string, lives: number, url: string) {
 		super(cleanCharacters(realname), lives, " ?");
 		this.realName = realname;
 		this.dates = dates;
+		this.url = url;
+		this.dateHintUsed = false;
+		this.hintsUsed = [];
+	}
+
+	async getHint() {
+		if (!this.dateHintUsed) {
+			this.dateHintUsed = true;
+			return this.dates;
+		}
+		if (this.categories === undefined) {
+			this.categories = await fetchComposerCategories(this.url);
+		}
+		if (this.categories.length === 0) {
+			const temp = this.categories;
+			this.categories = this.hintsUsed;
+			this.hintsUsed = temp;
+			return this.dates;
+		}
+		const index = Math.floor(Math.random() * this.categories.length);
+		const hint = this.categories[index];
+		this.categories[index] = this.categories[this.categories.length - 1];
+		this.categories.splice(this.categories.length - 1, 1);
+		this.hintsUsed.push(hint);
+		return hint;
 	}
 }
 
@@ -246,7 +275,7 @@ function startGame(message: Discord.Message, difficult: difficulty) {
 				}
 			})();
 			const composer = composerData[candidates[choice]];
-			const game = hangmanGames[authorId] = new ComposerHangman(composer.name, composer.dates, 7);
+			const game = hangmanGames[authorId] = new ComposerHangman(composer.name, composer.dates, 7, composer.pageUrl);
 			message.channel.send(hangmanMessage(game, "Game start", message.author, false));
 		}
 		else {
@@ -347,7 +376,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 				{
 					const game = findGame();
 					if (game) {
-						message.channel.send(`<@${authorId}> hint: ${game.dates}`).catch(catchHandler);
+						game.getHint().then(hint => message.channel.send(`<@${authorId}> hint: ${hint}`).catch(catchHandler));
 					}
 				}
 				break;
