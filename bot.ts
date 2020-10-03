@@ -14,9 +14,12 @@ const token = fs.readFileSync(filename).toString();
 const client = new Discord.Client();
 
 // doesn't work
-//client.on("ready", () => {
-//	client.user.setActivity({ type: "CUSTOM_STATUS", name: "Use !help in bot - spam for help" });
-//});
+client.on("ready", () => {
+	client.user.setActivity({
+		type: "LISTENING",
+		name: "Use !help in #bot-spam for help"
+	}).catch(err => console.error(err));
+});
 
 client.on("message", messageHandler);
 
