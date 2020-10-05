@@ -233,6 +233,7 @@ function startGame(message: Discord.Message, difficult: difficulty) {
 	const authorId = message.author.id;
 	if (hangmanGames[authorId]) {
 		message.channel.send(`<@${authorId}>, you already have a game ongoing`).catch(catchHandler);
+		return;
 	}
 	fetchComposerList().then(async (composerData) => {
 		if (composerData && composerData.length > 0) {
@@ -318,7 +319,7 @@ const hangman: CommandFunction = (message, commandToken) => {
 	const args = tokenize(pastFirstToken(message.content, commandToken));
 	const authorId = message.author.id;
 	if (args.length == 0) {
-		startGame(message, "medium");
+		startGame(message, "easy");
 	}
 	else {
 		const command = args[0];
