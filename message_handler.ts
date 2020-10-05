@@ -278,7 +278,7 @@ function startGame(message: Discord.Message, difficult: difficulty) {
 			})();
 			const composer = composerData[candidates[choice]];
 			const game = hangmanGames[authorId] = new ComposerHangman(composer.name, composer.dates, 7, composer.pageUrl);
-			message.channel.send(hangmanMessage(game, "Game start", message.author, false));
+			message.channel.send(hangmanMessage(game, `Game start. Difficulty: ${difficult}`, message.author, false));
 		}
 		else {
 			message.channel.send("Could not retrieve composer database");
