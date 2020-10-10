@@ -29,7 +29,7 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 					case "image/jpeg":
 					case "image/tiff":
 					case "image/bmp":
-						return `${tempFolder}/${i.toString().padStart(paddingDigits, "0")}.${type.substring(6)}`;
+						return `${tempFolder}${pathSeparator}${i.toString().padStart(paddingDigits, "0")}.${type.substring(6)}`;
 					default:
 						throw "Unsupported file type";
 				}

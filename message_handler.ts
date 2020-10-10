@@ -75,18 +75,24 @@ function noRoleArgumentResponse(message: Discord.Message) {
 	return message.channel.send(`<@${message.author.id}>, you must provide a role argument`).catch(catchHandler);
 }
 
+function normalizeUppercase(str: string) {
+	return str.normalize("NFC").toUpperCase();
+}
+
 function noRoleExistReponse(message: Discord.Message, roleName: string) {
-	const roles = message.guild.roles.cache;
-	const rolesArray = roles.map(role => role.name);
-	const nearest = StringSimilarity.findBestMatch(roleName, rolesArray);
-	if (nearest.bestMatchIndex < rolesArray.length && nearest.bestMatch.rating > 0 && nearest.bestMatch.target.substring(0, 1) !== "@") {
-		return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${rolesArray[nearest.bestMatchIndex]}?`).catch(catchHandler);
+	const rank = message.guild.me.roles.highest.position;
+	const roles = message.guild.roles.cache.array().filter(role => role.position < rank);
+	const rolesNormalized = roles.map(role => normalizeUppercase(role.name));
+	const nearest = StringSimilarity.findBestMatch(roleName, rolesNormalized);
+	if (nearest.bestMatchIndex < rolesNormalized.length && nearest.bestMatch.rating > 0 && nearest.bestMatch.target.substring(0, 1) !== "@") {
+		return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${roles[nearest.bestMatchIndex].name}?`).catch(catchHandler);
 	}
 	return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist`).catch(catchHandler);
 }
 
 function findRole(roles: Discord.RoleManager, roleName: string) {
-	return roles.cache.find(role => role.name == roleName);
+	roleName = normalizeUppercase(roleName);
+	return roles.cache.find(role => (normalizeUppercase(role.name) == roleName));
 }
 
 function findRoleId(roles: Discord.GuildMemberRoleManager, roleId: string) {
@@ -613,7 +619,7 @@ function help(message: Discord.Message, commandToken: string) {
 				const commandHelpMessage = new Discord.MessageEmbed()
 					.setColor("#123456")
 					.setTitle("OiseauBot Help")
-					.addField(`Help for ${lookupName} in channel ${channelName}`, `${command.usage}\n${command.explanation}`);
+					.addField(`Help for ${lookupName}` + (channelName.length == 0 ? " in all channels" : ` in channel ${channelName}`), `${command.usage}\n${command.explanation}`);
 				message.channel.send(commandHelpMessage).catch(catchHandler);
 				return;
 			}
