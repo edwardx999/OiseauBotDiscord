@@ -106,7 +106,7 @@ const giveRole: CommandFunction = (message, commandToken) => {
 	const text = message.content;
 	const desiredRoleName = pastFirstToken(message.content, commandToken).trim();
 	if (desiredRoleName.length == 0) {
-		noRoleArgumentResponse(message);
+		return noRoleArgumentResponse(message);
 	}
 	const role = findRole(roles, desiredRoleName);
 	if (role) {
@@ -134,7 +134,7 @@ const takeRole: CommandFunction = (message, commandToken) => {
 	const roles = guild.roles;
 	const desiredRoleName = pastFirstToken(message.content, commandToken).trim();
 	if (desiredRoleName.length == 0) {
-		noRoleArgumentResponse(message);
+		return noRoleArgumentResponse(message);
 	}
 	const role = findRole(roles, desiredRoleName);
 	if (role) {
