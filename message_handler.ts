@@ -421,7 +421,38 @@ function hasChannelPermission(message: Discord.Message, permission: Discord.Perm
 	return permissions.has(permission);
 }
 
-const execSproc: CommandFunction = (message, commandToken) => {
+type GuildId = string;
+type UserId = string;
+const lastSprocRequests: Record<GuildId, Record<UserId, { channel: string, messages: string[] }>> = {}
+
+const getLast = async (addTo: string[], message: Discord.Message) => {
+	const lastRequestGuild = lastSprocRequests[message.guild.id];
+	if (!lastRequestGuild) {
+		return false;
+	}
+	const lastRequest = lastRequestGuild && lastRequestGuild[message.member.id];
+	if (!lastRequest) {
+		return false;
+	}
+	const channel = message.guild.channels.cache.get(lastRequest.channel) as Discord.TextChannel;
+	if (!channel) {
+		return false;
+	}
+	for (const responseId of lastRequest.messages) {
+		try {
+			const resp = await channel.messages.fetch(responseId);
+			for (const attachment of resp.attachments) {
+				addTo.push(attachment[1].url);
+			}
+		}
+		catch{
+			return false;
+		}
+	}
+	return true;
+};
+
+const execSproc: CommandFunction = async (message, commandToken) => {
 	if (!hasChannelPermission(message, "ATTACH_FILES")) {
 		if (hasChannelPermission(message, "SEND_MESSAGES")) {
 			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
@@ -442,7 +473,15 @@ const execSproc: CommandFunction = (message, commandToken) => {
 				foundCommands = true;
 				break;
 			}
-			attachments.push(arg);
+			if (arg.toUpperCase() === "$LAST") {
+				if (!(await getLast(attachments, message))) {
+					message.channel.send("Failed to retrieve last request").catch(catchHandler);
+					return;
+				}
+			}
+			else {
+				attachments.push(arg);
+			}
 		}
 		if (!foundCommands) {
 			message.channel.send("No commands given").catch(catchHandler);
@@ -461,10 +500,17 @@ const execSproc: CommandFunction = (message, commandToken) => {
 				catchHandler(ex);
 			}
 		}
+		const lastRequestGuild = lastSprocRequests[message.guild.id] || (lastSprocRequests[message.guild.id] = {});
+		lastRequestGuild[message.author.id] = {
+			channel: message.channel.id,
+			messages: []
+		};
+		const responses = lastRequestGuild[message.author.id].messages;
 		for (let i = 0; i < result.filePaths.length; ++i) {
 			try {
 				const attachment = new Discord.MessageAttachment(result.filePaths[i]);
-				await message.channel.send(attachment);
+				const sent = await message.channel.send(attachment);
+				responses.push(sent.id);
 			}
 			catch (error) {
 				if (error instanceof Discord.DiscordAPIError) {
