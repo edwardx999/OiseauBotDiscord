@@ -111,15 +111,15 @@ const giveRole: CommandFunction = (message, commandToken) => {
 	if (role) {
 		const userRoles = guild.member(message.author.id).roles;
 		if (findRoleId(userRoles, role.id)) {
-			message.channel.send(`<@${message.author.id}>, you already have role ${desiredRoleName}`).catch(catchHandler);
+			message.channel.send(`<@${message.author.id}>, you already have role ${role.name}`).catch(catchHandler);
 		}
 		else {
 			userRoles.add(role).then(
 				() => {
-					message.channel.send(`<@${message.author.id}>, you have been given role ${desiredRoleName}`).catch(catchHandler);
+					message.channel.send(`<@${message.author.id}>, you have been given role ${role.name}`).catch(catchHandler);
 				},
 				() => {
-					message.channel.send(`<@${message.author.id}>, I cannot give you role ${desiredRoleName}`).catch(catchHandler);
+					message.channel.send(`<@${message.author.id}>, I cannot give you role ${role.name}`).catch(catchHandler);
 				});
 		}
 	}
@@ -139,15 +139,15 @@ const takeRole: CommandFunction = (message, commandToken) => {
 	if (role) {
 		const userRoles = guild.member(message.author.id).roles;
 		if (!findRoleId(userRoles, role.id)) {
-			message.channel.send(`<@${message.author.id}>, you do not have role ${desiredRoleName}`).catch(catchHandler);
+			message.channel.send(`<@${message.author.id}>, you do not have role ${role.name}`).catch(catchHandler);
 		}
 		else {
 			userRoles.remove(role).then(
 				() => {
-					message.channel.send(`<@${message.author.id}>, you have lost role ${desiredRoleName}`).catch(catchHandler);
+					message.channel.send(`<@${message.author.id}>, you have lost role ${role.name}`).catch(catchHandler);
 				},
 				() => {
-					message.channel.send(`<@${message.author.id}>, I cannot remove role ${desiredRoleName}`).catch(catchHandler);
+					message.channel.send(`<@${message.author.id}>, I cannot remove role ${role.name}`).catch(catchHandler);
 				});
 		}
 	}
