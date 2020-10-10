@@ -81,10 +81,11 @@ function normalizeUppercase(str: string) {
 
 function noRoleExistReponse(message: Discord.Message, roleName: string) {
 	const rank = message.guild.me.roles.highest.position;
-	const roles = message.guild.roles.cache.array().filter(role => role.position < rank);
+	const roles = message.guild.roles.cache.array().filter(role => role.position < rank && !role.name.startsWith("@"));
 	const rolesNormalized = roles.map(role => normalizeUppercase(role.name));
-	const nearest = StringSimilarity.findBestMatch(roleName, rolesNormalized);
-	if (nearest.bestMatchIndex < rolesNormalized.length && nearest.bestMatch.rating > 0 && nearest.bestMatch.target.substring(0, 1) !== "@") {
+	const desiredNormalized = normalizeUppercase(roleName);
+	const nearest = StringSimilarity.findBestMatch(desiredNormalized, rolesNormalized);
+	if (nearest.bestMatchIndex < rolesNormalized.length && nearest.bestMatch.rating > 0) {
 		return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${roles[nearest.bestMatchIndex].name}?`).catch(catchHandler);
 	}
 	return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist`).catch(catchHandler);
