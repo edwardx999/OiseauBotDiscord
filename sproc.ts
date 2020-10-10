@@ -54,8 +54,7 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 			let timedOut = false;
 			const timeout = setTimeout(() => {
 				sproc.kill();
-				stdout = "Timeout";
-				reject(stdout);
+				reject("Timeout");
 				timedOut = true;
 			}, 60000);
 			sproc.stdout.on("data", data => stdout += data);
