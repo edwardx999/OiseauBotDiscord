@@ -559,7 +559,11 @@ const listRoles: CommandFunction = (message, commandToken) => {
 
 const commands: Record<string, Record<string, Command>> = {
 	"": {
-		"!sproc": { command: execSproc, explanation: "Uses sproc on given images", usage: "[Attach files], !sproc [links] [sproc_commands]" }
+		"!sproc": {
+			command: execSproc,
+			explanation: "Uses sproc on given images.\nYou can either attach files, or use links and the special variable $LAST (last result) before the list of commands",
+			usage: "[Attach files], !sproc [links] [sproc_commands]"
+		}
 	},
 	"bot-spam": {
 		"!hi": { command: sayHi, explanation: "Says hello", usage: "!hi" },
