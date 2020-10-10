@@ -51,17 +51,27 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 			const sproc = cp.spawn(`.${pathSeparator}sproc_lim`, [tempFolder].concat(commands));
 			let stdout = "";
 			let stderr = "";
+			let timedOut = false;
+			const timeout = setTimeout(() => {
+				sproc.kill();
+				stdout = "Timeout";
+				reject(stdout);
+				timedOut = true;
+			}, 60000);
 			sproc.stdout.on("data", data => stdout += data);
 			sproc.stderr.on("data", data => stderr += data);
 			sproc.on("close", code => {
-				if (code != 0) {
-					console.log(code);
-					console.log(stdout);
-					console.log(stderr);
-					reject(stdout);
-				}
-				else {
-					resolve(stdout);
+				if (!timedOut) {
+					if (code != 0) {
+						console.log(code);
+						console.log(stdout);
+						console.log(stderr);
+						reject(stdout);
+					}
+					else {
+						resolve(stdout);
+					}
+					clearTimeout(timeout);
 				}
 			});
 		});
