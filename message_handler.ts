@@ -237,7 +237,7 @@ function startGame(message: Discord.Message, difficult: difficulty) {
 	}
 	fetchComposerList().then(async (composerData) => {
 		if (composerData && composerData.length > 0) {
-			const candidatesToConsider = Math.min(30, composerData.length);
+			const candidatesToConsider = Math.min(16, composerData.length);
 			const candidates: number[] = [];
 			const queries: (Promise<number> | undefined)[] = [];
 			for (let i = 0; i < candidatesToConsider; ++i) {
