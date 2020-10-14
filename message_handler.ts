@@ -71,12 +71,16 @@ const sayHi: CommandFunction = (message, commandToken) => {
 	message.channel.send({ content: `${greeting} <@${message.author.id}>` }).catch(catchHandler);
 };
 
-const newRolesDeleteTimeout = 30000;
+const newRolesDeleteTimeout = 10000;
+
+const deleteExtraneous = (message: Discord.Message) => {
+	const id = message.author.id;
+	const channel = message.channel;
+	return setTimeout(() => channel.messages.delete(id).catch(catchHandler), newRolesDeleteTimeout);
+};
 
 function noRoleArgumentResponse(message: Discord.Message) {
-	setTimeout(() => {
-		message.channel.messages.delete(message.id).catch(catchHandler);
-	}, newRolesDeleteTimeout);
+	deleteExtraneous(message);
 	return message.channel.send(`<@${message.author.id}>, you must provide a role argument`).catch(catchHandler);
 }
 
@@ -90,9 +94,7 @@ function noRoleExistReponse(message: Discord.Message, roleName: string) {
 	const rolesNormalized = roles.map(role => normalizeUppercase(role.name));
 	const desiredNormalized = normalizeUppercase(roleName);
 	const nearest = StringSimilarity.findBestMatch(desiredNormalized, rolesNormalized);
-	setTimeout(() => {
-		message.channel.messages.delete(message.id).catch(catchHandler);
-	}, newRolesDeleteTimeout);
+	deleteExtraneous(message);
 	if (nearest.bestMatchIndex < rolesNormalized.length && nearest.bestMatch.rating > 0) {
 		return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${roles[nearest.bestMatchIndex].name}?`).catch(catchHandler);
 	}
@@ -664,9 +666,7 @@ const messageHandler = (message: Discord.Message) => {
 			}
 		}
 		else if (channel.name === "new-roles") {
-			setTimeout(() => {
-				message.channel.messages.delete(message.id).catch(catchHandler);
-			}, newRolesDeleteTimeout);
+			deleteExtraneous(message);
 		}
 	}
 };
