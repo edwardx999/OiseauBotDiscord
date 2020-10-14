@@ -71,7 +71,12 @@ const sayHi: CommandFunction = (message, commandToken) => {
 	message.channel.send({ content: `${greeting} <@${message.author.id}>` }).catch(catchHandler);
 };
 
+const newRolesDeleteTimeout = 30000;
+
 function noRoleArgumentResponse(message: Discord.Message) {
+	setTimeout(() => {
+		message.channel.messages.delete(message.id).catch(catchHandler);
+	}, newRolesDeleteTimeout);
 	return message.channel.send(`<@${message.author.id}>, you must provide a role argument`).catch(catchHandler);
 }
 
@@ -85,6 +90,9 @@ function noRoleExistReponse(message: Discord.Message, roleName: string) {
 	const rolesNormalized = roles.map(role => normalizeUppercase(role.name));
 	const desiredNormalized = normalizeUppercase(roleName);
 	const nearest = StringSimilarity.findBestMatch(desiredNormalized, rolesNormalized);
+	setTimeout(() => {
+		message.channel.messages.delete(message.id).catch(catchHandler);
+	}, newRolesDeleteTimeout);
 	if (nearest.bestMatchIndex < rolesNormalized.length && nearest.bestMatch.rating > 0) {
 		return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${roles[nearest.bestMatchIndex].name}?`).catch(catchHandler);
 	}
@@ -646,12 +654,19 @@ const messageHandler = (message: Discord.Message) => {
 			return false;
 		};
 		findCommand(commands[channel.name]) || findCommand(commands[""]);
-		if (channel.name === "bot-spam" && message.content.length === 1 && message.content.match(/[A-Z]/i)) {
-			const game = hangmanGames[message.author.id];
-			if (game) {
-				const whatToGuess = message.content.toUpperCase();
-				hangmanGuess(message, game, whatToGuess);
+		if (channel.name === "bot-spam") {
+			if (message.content.length === 1 && message.content.match(/[A-Z]/i)) {
+				const game = hangmanGames[message.author.id];
+				if (game) {
+					const whatToGuess = message.content.toUpperCase();
+					hangmanGuess(message, game, whatToGuess);
+				}
 			}
+		}
+		else if (channel.name === "new-roles") {
+			setTimeout(() => {
+				message.channel.messages.delete(message.id).catch(catchHandler);
+			}, newRolesDeleteTimeout);
 		}
 	}
 };
