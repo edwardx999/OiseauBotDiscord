@@ -74,7 +74,7 @@ const sayHi: CommandFunction = (message, commandToken) => {
 const newRolesDeleteTimeout = 10000;
 
 const deleteExtraneous = (message: Discord.Message) => {
-	const id = message.author.id;
+	const id = message.id;
 	const channel = message.channel;
 	return setTimeout(() => channel.messages.delete(id).catch(catchHandler), newRolesDeleteTimeout);
 };
