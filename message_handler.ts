@@ -640,6 +640,9 @@ function help(message: Discord.Message, commandToken: string) {
 };
 
 const messageHandler = (message: Discord.Message) => {
+	if (message.author.id === message.guild.me.id) {
+		return;
+	}
 	if (message.channel.type === "text" && hasChannelPermission(message, "SEND_MESSAGES")) {
 		const channel = message.channel as Discord.TextChannel;
 		const findCommand = (commands: Record<string, Command>) => {
@@ -655,18 +658,20 @@ const messageHandler = (message: Discord.Message) => {
 			}
 			return false;
 		};
-		findCommand(commands[channel.name]) || findCommand(commands[""]);
-		if (channel.name === "bot-spam") {
-			if (message.content.length === 1 && message.content.match(/[A-Z]/i)) {
-				const game = hangmanGames[message.author.id];
-				if (game) {
-					const whatToGuess = message.content.toUpperCase();
-					hangmanGuess(message, game, whatToGuess);
+		const commandFound = findCommand(commands[channel.name]) || findCommand(commands[""]);
+		if (!commandFound) {
+			if (channel.name === "bot-spam") {
+				if (message.content.length === 1 && message.content.match(/[A-Z]/i)) {
+					const game = hangmanGames[message.author.id];
+					if (game) {
+						const whatToGuess = message.content.toUpperCase();
+						hangmanGuess(message, game, whatToGuess);
+					}
 				}
 			}
-		}
-		else if (channel.name === "new-roles") {
-			deleteExtraneous(message);
+			else if (channel.name === "new-roles") {
+				deleteExtraneous(message);
+			}
 		}
 	}
 };
