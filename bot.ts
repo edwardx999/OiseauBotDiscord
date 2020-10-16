@@ -1,6 +1,6 @@
 import * as Discord from "discord.js";
 import * as fs from "fs";
-import { messageHandler } from "./message_handler";
+import { createMessageHandler } from "./message_handler";
 const args = process.argv;
 
 if (args.length != 3) {
@@ -21,6 +21,6 @@ client.on("ready", () => {
 	}).catch(err => console.error(err));
 });
 
-client.on("message", messageHandler);
+client.on("message", createMessageHandler(client));
 
 client.login(token);

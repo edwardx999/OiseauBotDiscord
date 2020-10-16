@@ -1,4 +1,4 @@
-﻿export { messageHandler }
+﻿export { createMessageHandler }
 import * as Discord from "discord.js";
 import * as StringSimilarity from "string-similarity";
 import { Hangman, cleanCharacters } from "./hangman";
@@ -639,39 +639,62 @@ function help(message: Discord.Message, commandToken: string) {
 	}
 };
 
-const messageHandler = (message: Discord.Message) => {
-	if (message.author.id === message.guild.me.id) {
-		return;
-	}
-	if (message.channel.type === "text" && hasChannelPermission(message, "SEND_MESSAGES")) {
-		const channel = message.channel as Discord.TextChannel;
-		const findCommand = (commands: Record<string, Command>) => {
-			if (commands) {
-				const firstWord = firstToken(message.content);
-				if (firstWord.startsWith(commandFlag)) {
-					const command = commands[firstWord];
-					if (command) {
-						command.command(message, firstWord);
-						return true;
-					}
+const sendEmoji = (message: Discord.Message, bot: Discord.Client) => {
+	const text = message.content;
+	if (text.length > 2 && text.startsWith(":") && text.endsWith(":") && hasChannelPermission(message, "USE_EXTERNAL_EMOJIS")) {
+		const emojiName = text.substr(1, text.length - 2);
+		for (const [id, guild] of bot.guilds.cache) {
+			const emojis = guild.emojis.cache;
+			for (const [emoji_id, emoji] of emojis) {
+				if (emojiName === emoji.name) {
+					message.channel.send(`${emoji}`).catch(catchHandler);
+					return true;
 				}
-			}
-			return false;
-		};
-		const commandFound = findCommand(commands[channel.name]) || findCommand(commands[""]);
-		if (!commandFound) {
-			if (channel.name === "bot-spam") {
-				if (message.content.length === 1 && message.content.match(/[A-Z]/i)) {
-					const game = hangmanGames[message.author.id];
-					if (game) {
-						const whatToGuess = message.content.toUpperCase();
-						hangmanGuess(message, game, whatToGuess);
-					}
-				}
-			}
-			else if (channel.name === "new-roles") {
-				deleteExtraneous(message);
 			}
 		}
 	}
+	return false;
 };
+
+const createMessageHandler = (bot: Discord.Client) => {
+	const messageHandler = (message: Discord.Message) => {
+		if (message.author.id === message.guild.me.id) {
+			return;
+		}
+		if (message.channel.type === "text" && hasChannelPermission(message, "SEND_MESSAGES")) {
+			const channel = message.channel as Discord.TextChannel;
+			const findCommand = (commands: Record<string, Command>) => {
+				if (commands) {
+					const firstWord = firstToken(message.content);
+					if (firstWord.startsWith(commandFlag)) {
+						const command = commands[firstWord];
+						if (command) {
+							command.command(message, firstWord);
+							return true;
+						}
+					}
+				}
+				return false;
+			};
+			const commandFound = findCommand(commands[channel.name]) || findCommand(commands[""]);
+			if (!commandFound) {
+				if (sendEmoji(message, bot)) {
+				}
+				else if (channel.name === "bot-spam") {
+					if (message.content.length === 1 && message.content.match(/[A-Z]/i)) {
+						const game = hangmanGames[message.author.id];
+						if (game) {
+							const whatToGuess = message.content.toUpperCase();
+							hangmanGuess(message, game, whatToGuess);
+						}
+					}
+				}
+				else if (channel.name === "new-roles") {
+					deleteExtraneous(message);
+				}
+			}
+		}
+	};
+	return messageHandler;
+};
+
