@@ -507,6 +507,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 	}
 	if (attachments.length == 0) {
 		message.channel.send("You have nothing to process").catch(catchHandler);
+		return;
 	}
 	executeSproc(attachments, args.map(arg => arg.toString())).then(async (result) => {
 		const output = result.sprocOutput.trim();
