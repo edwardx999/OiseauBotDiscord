@@ -39,6 +39,7 @@
   </ItemGroup>
   <ItemGroup>
     <TypeScriptCompile Include="bot.ts" />
+    <TypeScriptCompile Include="circular_buffer.ts" />
     <TypeScriptCompile Include="hangman.ts">
       <SubType>Code</SubType>
     </TypeScriptCompile>

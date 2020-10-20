@@ -4,6 +4,7 @@ import * as StringSimilarity from "string-similarity";
 import { Hangman, cleanCharacters } from "./hangman";
 import { fetchComposerList, ComposerData, fetchComposerPageSize, fetchComposerCategories } from "./wiki_composer";
 import { executeSproc, cleanupSproc } from "./sproc";
+import { CircularBuffer } from "./circular_buffer";
 
 type CommandFunction = (message: Discord.Message, commandToken: string) => any;
 
@@ -440,36 +441,28 @@ function hasChannelPermission(message: Discord.Message, permission: Discord.Perm
 
 type GuildId = string;
 type UserId = string;
-const lastSprocRequests: Record<GuildId, Record<UserId, { channel: string, messages: string[] }>> = {}
+type Urls = string[];
+const lastSprocRequests: Record<GuildId, Record<UserId, CircularBuffer<Urls>>> = {};
 
-const getLast = async (addTo: string[], message: Discord.Message) => {
+const getLast = (addTo: string[], message: Discord.Message, index: number) => {
 	const lastRequestGuild = lastSprocRequests[message.guild.id];
 	if (!lastRequestGuild) {
 		return false;
 	}
-	const lastRequest = lastRequestGuild && lastRequestGuild[message.member.id];
+	const lastRequest = lastRequestGuild[message.member.id]?.last(index);
 	if (!lastRequest) {
 		return false;
 	}
-	const channel = message.guild.channels.cache.get(lastRequest.channel) as Discord.TextChannel;
-	if (!channel) {
-		return false;
-	}
-	for (const responseId of lastRequest.messages) {
-		try {
-			const resp = await channel.messages.fetch(responseId);
-			for (const attachment of resp.attachments) {
-				addTo.push(attachment[1].url);
-			}
-		}
-		catch{
-			return false;
-		}
+	for (const attachment of lastRequest) {
+		addTo.push(attachment);
 	}
 	return true;
 };
 
-const execSproc: CommandFunction = async (message, commandToken) => {
+
+const lastRegex = /^\$LAST([-~]([0-9]+))?$/;
+
+const execSproc: CommandFunction = (message, commandToken) => {
 	if (!hasChannelPermission(message, "ATTACH_FILES")) {
 		if (hasChannelPermission(message, "SEND_MESSAGES")) {
 			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
@@ -490,8 +483,10 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 				foundCommands = true;
 				break;
 			}
-			if (arg.toUpperCase() === "$LAST") {
-				if (!(await getLast(attachments, message))) {
+			const match = lastRegex.exec(arg.toUpperCase());
+			if (match) {
+				const index = match[2] ? +match[2] : 0;
+				if (!getLast(attachments, message, index)) {
 					message.channel.send("Failed to retrieve last request").catch(catchHandler);
 					return;
 				}
@@ -519,16 +514,15 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 			}
 		}
 		const lastRequestGuild = lastSprocRequests[message.guild.id] || (lastSprocRequests[message.guild.id] = {});
-		lastRequestGuild[message.author.id] = {
-			channel: message.channel.id,
-			messages: []
-		};
-		const responses = lastRequestGuild[message.author.id].messages;
+		const lastRequestList = lastRequestGuild[message.author.id] || (lastRequestGuild[message.author.id] = new CircularBuffer(8));
+		const responses = lastRequestList.push([]);
 		for (let i = 0; i < result.filePaths.length; ++i) {
 			try {
 				const attachment = new Discord.MessageAttachment(result.filePaths[i]);
 				const sent = await message.channel.send(attachment);
-				responses.push(sent.id);
+				for (const attachment of sent.attachments) {
+					responses.push(attachment[1].url);
+				}
 			}
 			catch (error) {
 				if (error instanceof Discord.DiscordAPIError) {
