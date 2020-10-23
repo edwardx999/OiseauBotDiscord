@@ -52,8 +52,8 @@ function tokenize(words: string) {
 }
 
 function quoteTokenize(words: string) {
-	var regex = /[^\s"]+|"(\\"|[^"]*)"/gi;
-	var tokens: string[] = [];
+	const regex = /[^\s"]+|"(\\"|[^"]*)"/gi;
+	const tokens: string[] = [];
 	while (true) {
 		var match = regex.exec(words);
 		if (match != null) {
@@ -238,7 +238,17 @@ function hangmanMessage(game: Hangman, message: string, player: Discord.User, pa
 			}
 		}
 	};
-	return `${message}\n\`\`${game.locationCorrect.map(getReplacementChar).join("")}\`\`\n${livesMessage()}`
+	const charactersGuessedMsg = (() => {
+		if (game.charactersGuessed.size == 0) {
+			return "";
+		}
+		let charactersGuessed = " Characters guessed: ";
+		for (const character of game.charactersGuessed) {
+			charactersGuessed += character;
+		}
+		return charactersGuessed;
+	})();
+	return `${message}${charactersGuessedMsg}\n\`\`${game.locationCorrect.map(getReplacementChar).join("")}\`\`\n${livesMessage()}`
 }
 
 function hangmanCompleteMessage(game: ComposerHangman) {
@@ -317,7 +327,7 @@ function hangmanGuess(message: Discord.Message, game: ComposerHangman, guess: st
 				delete hangmanGames[authorId]
 			}
 			else {
-				message.channel.send(hangmanMessage(game, `"${guess}" not found`, message.author, false)).catch(catchHandler);
+				message.channel.send(hangmanMessage(game, `"${guess}" not found.`, message.author, false)).catch(catchHandler);
 			}
 		}
 		else {
@@ -327,7 +337,7 @@ function hangmanGuess(message: Discord.Message, game: ComposerHangman, guess: st
 				delete hangmanGames[authorId];
 			}
 			else {
-				message.channel.send(hangmanMessage(game, `${plural} found of "${guess}"`, message.author, false)).catch(catchHandler);
+				message.channel.send(hangmanMessage(game, `${plural} found of "${guess}."`, message.author, false)).catch(catchHandler);
 			}
 		}
 	}
@@ -616,7 +626,7 @@ function help(message: Discord.Message, commandToken: string) {
 			if (commandName.startsWith(commandFlag)) {
 				return commandName;
 			}
-			return "!" + commandName;
+			return commandFlag + commandName;
 		})();
 		for (const channelName in commands) {
 			const channelCommands = commands[channelName];

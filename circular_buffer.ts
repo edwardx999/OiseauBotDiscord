@@ -2,11 +2,11 @@ export { CircularBuffer }
 
 class CircularBuffer<T>
 {
-	private data: (T | undefined)[];
+	private data: T[];
 	private head: number;
 
 	constructor(capacity: number) {
-		this.data = Array(capacity).fill(undefined);
+		this.data = Array.from({ length: capacity });
 		this.head = 0;
 	}
 
