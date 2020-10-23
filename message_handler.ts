@@ -267,24 +267,25 @@ const difficultyMap: Record<Difficulty, SampleSize> = {
 };
 
 async function getComposer(composerData: ComposerData[], difficult: Difficulty) {
-	const candidatesToConsider = Math.min(difficultyMap[difficult], composerData.length);
+	const candidatesToConsider = difficultyMap[difficult];
 	const candidates: number[] = [];
-	const queries: (Promise<number> | undefined)[] = [];
-	for (let i = 0; i < candidatesToConsider; ++i) {
-		const index = Math.floor(Math.random() * composerData.length);
-		const composer = composerData[index];
-		candidates.push(index);
-		if (!composer.pageSize) {
-			queries.push(fetchComposerPageSize(composer.pageUrl));
+	{
+		const queries: { promise: Promise<number>, composer: ComposerData }[] = [];
+		{
+			const indicesFound = {};
+			for (let i = 0; i < candidatesToConsider; ++i) {
+				const index = Math.floor(Math.random() * composerData.length);
+				const composer = composerData[index];
+				candidates.push(index);
+				if (!composer.pageSize && !(indicesFound[index])) {
+					queries.push({ promise: fetchComposerPageSize(composer.pageUrl), composer: composer });
+					indicesFound[index] = true;
+				}
+			}
 		}
-		else {
-			queries.push(undefined);
-		}
-	}
-	for (let i = 0; i < candidatesToConsider; ++i) {
-		if (queries[i]) {
-			const pageSize = await queries[i];
-			composerData[candidates[i]].pageSize = pageSize;
+		for (const query of queries) {
+			const pageSize = await query.promise;
+			query.composer.pageSize = pageSize;
 		}
 	}
 	let best = composerData[candidates[0]];
