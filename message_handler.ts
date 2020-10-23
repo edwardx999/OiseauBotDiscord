@@ -1,4 +1,4 @@
-﻿export { createMessageHandler }
+﻿export { createMessageHandler, getComposer, Difficulty }
 import * as Discord from "discord.js";
 import * as StringSimilarity from "string-similarity";
 import { Hangman, cleanCharacters } from "./hangman";
@@ -255,9 +255,49 @@ function hangmanCompleteMessage(game: ComposerHangman) {
 	return `The answer was ${game.answer} (${game.realName}) (${game.dates})`;
 }
 
-type difficulty = "easiest" | "easy" | "medium" | "hard" | "hardest";
+type Difficulty = "easiest" | "easy" | "medium" | "hard" | "hardest";
 
-function startGame(message: Discord.Message, difficult: difficulty) {
+type SampleSize = number;
+const difficultyMap: Record<Difficulty, SampleSize> = {
+	easiest: 25,
+	easy: 16,
+	medium: 9,
+	hard: 4,
+	hardest: 1,
+};
+
+async function getComposer(composerData: ComposerData[], difficult: Difficulty) {
+	const candidatesToConsider = Math.min(difficultyMap[difficult], composerData.length);
+	const candidates: number[] = [];
+	const queries: (Promise<number> | undefined)[] = [];
+	for (let i = 0; i < candidatesToConsider; ++i) {
+		const index = Math.floor(Math.random() * composerData.length);
+		const composer = composerData[index];
+		candidates.push(index);
+		if (!composer.pageSize) {
+			queries.push(fetchComposerPageSize(composer.pageUrl));
+		}
+		else {
+			queries.push(undefined);
+		}
+	}
+	for (let i = 0; i < candidatesToConsider; ++i) {
+		if (queries[i]) {
+			const pageSize = await queries[i];
+			composerData[candidates[i]].pageSize = pageSize;
+		}
+	}
+	let best = composerData[candidates[0]];
+	for (let i = 1; i < candidatesToConsider; ++i) {
+		const comp = composerData[candidates[i]];
+		if (comp.pageSize > best.pageSize) {
+			best = comp;
+		}
+	}
+	return best;
+}
+
+function startGame(message: Discord.Message, difficult: Difficulty) {
 	const authorId = message.author.id;
 	if (hangmanGames[authorId]) {
 		message.channel.send(`<@${authorId}>, you already have a game ongoing`).catch(catchHandler);
@@ -265,46 +305,7 @@ function startGame(message: Discord.Message, difficult: difficulty) {
 	}
 	fetchComposerList().then(async (composerData) => {
 		if (composerData && composerData.length > 0) {
-			const candidatesToConsider = Math.min(16, composerData.length);
-			const candidates: number[] = [];
-			const queries: (Promise<number> | undefined)[] = [];
-			for (let i = 0; i < candidatesToConsider; ++i) {
-				const index = Math.floor(Math.random() * composerData.length);
-				const composer = composerData[index];
-				candidates.push(index);
-				if (!composer.pageSize) {
-					queries.push(fetchComposerPageSize(composer.pageUrl));
-				}
-				else {
-					queries.push(undefined);
-				}
-			}
-			for (let i = 0; i < candidatesToConsider; ++i) {
-				if (queries[i]) {
-					const pageSize = await queries[i];
-					composerData[candidates[i]].pageSize = pageSize;
-				}
-			}
-			// could use nth_element, but meh
-			candidates.sort((index1, index2) => {
-				return composerData[index1].pageSize - composerData[index2].pageSize;
-			});
-			const debugCandidatesInfo = candidates.map(index => composerData[index]);
-			const choice = (() => {
-				switch (difficult) {
-					case "easiest":
-						return candidatesToConsider - 1;
-					case "easy":
-						return Math.floor(3 * candidatesToConsider / 4);
-					case "medium":
-						return Math.floor(candidatesToConsider / 2);
-					case "hard":
-						return Math.floor(candidatesToConsider / 4);
-					case "hardest":
-						return 0;
-				}
-			})();
-			const composer = composerData[candidates[choice]];
+			const composer = await getComposer(composerData, difficult);
 			const game = hangmanGames[authorId] = new ComposerHangman(composer.name, composer.dates, 7, composer.pageUrl);
 			message.channel.send(hangmanMessage(game, `Game start. Difficulty: ${difficult}`, message.author, false));
 		}
