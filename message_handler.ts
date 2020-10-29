@@ -242,17 +242,22 @@ function hangmanMessage(game: Hangman, message: string, player: Discord.User, pa
 		if (game.charactersGuessed.size == 0) {
 			return "";
 		}
-		let charactersGuessed = " Characters guessed: ";
+		let chars = [];
 		for (const character of game.charactersGuessed) {
-			charactersGuessed += character;
+			chars.push(character);
 		}
-		return charactersGuessed;
+		chars.sort();
+		return " Characters guessed: " + chars.join("");
 	})();
 	return `${message}${charactersGuessedMsg}\n\`\`${game.locationCorrect.map(getReplacementChar).join("")}\`\`\n${livesMessage()}`
 }
 
 function hangmanCompleteMessage(game: ComposerHangman) {
-	return `The answer was ${game.answer} (${game.realName}) (${game.dates})`;
+	let ret = `The answer was ${game.answer} (${game.realName}) (${game.dates})`;
+	if (game.url) {
+		ret += ` (https://en.wikipedia.org${game.url})`;
+	}
+	return ret;
 }
 
 type Difficulty = "easiest" | "easy" | "medium" | "hard" | "hardest";
