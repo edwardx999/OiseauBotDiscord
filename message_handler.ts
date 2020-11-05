@@ -5,7 +5,8 @@ import { Hangman, cleanCharacters } from "./hangman";
 import { fetchComposerList, ComposerData, fetchComposerPageSize, fetchComposerCategories } from "./wiki_composer";
 import { executeSproc, cleanupSproc } from "./sproc";
 import { CircularBuffer } from "./circular_buffer";
-import NodePersist = require("node-persist");
+import { sep as pathSeparator } from "path";
+import * as Cache from "cacache";
 
 type CommandFunction = (message: Discord.Message, commandToken: string) => any;
 
@@ -462,34 +463,22 @@ type UserId = string;
 type Urls = string[];
 const lastSprocRequests: Record<GuildId, Record<UserId, CircularBuffer<Urls>>> = {};
 
-let storageInited = false;
-let storagePromise: Promise<NodePersist.InitOptions>;
-const initStorage = async () => {
-	if (!storageInited) {
-		if (storagePromise === undefined) {
-			storagePromise = NodePersist.init({ dir: "data" });
-		}
-		try {
-			await storagePromise;
-		}
-		catch{
-			return null;
-		}
-		storageInited = true;
-	}
-};
-
 const sprocRequestKey = (message: Discord.Message) => {
 	return `${message.guild.id}+${message.author.id}$`;
 }
 
+const storagePath = `.${pathSeparator}data`;
 const lastFromPersistent = async (message: Discord.Message) => {
-	await initStorage();
 	const key = sprocRequestKey(message);
-	const result = await NodePersist.getItem(key);
-	if (Array.isArray(result) && result.every(el => Array.isArray(el) && el.every(el => typeof el === "string"))) {
-		return lastSprocRequests[message.guild.id][message.author.id] = new CircularBuffer<Urls>(8, result as Urls[]);
+	try {
+		const cached = await Cache.get(storagePath, key);
+		const result = JSON.parse(cached.data.toString());
+		if (Array.isArray(result) && result.every(el => Array.isArray(el) && el.every(el => typeof el === "string"))) {
+			return lastSprocRequests[message.guild.id][message.author.id] = new CircularBuffer<Urls>(8, result as Urls[]);
+		}
+	} catch {
 	}
+	lastSprocRequests[message.guild.id][message.author.id] = new CircularBuffer(8);
 	return null;
 };
 
@@ -503,13 +492,7 @@ const getLast = async (addTo: string[], message: Discord.Message, index: number)
 	else {
 		const lastRequestUser = lastRequestGuild[message.author.id];
 		if (!lastRequestUser) {
-			const fetchAttempt = (await lastFromPersistent(message));
-			if (!fetchAttempt) {
-				lastRequestGuild[message.author.id] = new CircularBuffer(8);
-			}
-			else {
-				lastRequest = fetchAttempt.last(index);
-			}
+			lastRequest = (await lastFromPersistent(message))?.last(index);
 		}
 		else {
 			lastRequest = lastRequestUser.last(index);
@@ -600,14 +583,12 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 				}
 			}
 		}
+		cleanupSproc(result);
 		const lastRequestGuild = lastSprocRequests[message.guild.id] || (lastSprocRequests[message.guild.id] = {});
 		const lastRequestList = lastRequestGuild[message.author.id] || (lastRequestGuild[message.author.id] = new CircularBuffer(8));
 		lastRequestList.push(responses);
 		const key = sprocRequestKey(message);
-		initStorage().then(() => {
-			NodePersist.setItem(key, lastRequestList.toArray());
-		});
-		cleanupSproc(result);
+		Cache.put(storagePath, key, JSON.stringify(lastRequestList.toArray())).catch(catchHandler);
 	} catch (error) {
 		message.channel.send(`Error: ${error}`).catch(catchHandler);
 	}
