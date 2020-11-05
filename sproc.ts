@@ -31,7 +31,7 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 					case "image/bmp":
 						return `${tempFolder}${pathSeparator}${i.toString().padStart(paddingDigits, "0")}.${type.substring(6)}`;
 					default:
-						throw "Unsupported file type";
+						throw `Unsupported file type "${type}"`;
 				}
 			})();
 			const fileStream = fs.createWriteStream(path);

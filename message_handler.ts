@@ -5,6 +5,7 @@ import { Hangman, cleanCharacters } from "./hangman";
 import { fetchComposerList, ComposerData, fetchComposerPageSize, fetchComposerCategories } from "./wiki_composer";
 import { executeSproc, cleanupSproc } from "./sproc";
 import { CircularBuffer } from "./circular_buffer";
+import NodePersist = require("node-persist");
 
 type CommandFunction = (message: Discord.Message, commandToken: string) => any;
 
@@ -461,12 +462,59 @@ type UserId = string;
 type Urls = string[];
 const lastSprocRequests: Record<GuildId, Record<UserId, CircularBuffer<Urls>>> = {};
 
-const getLast = (addTo: string[], message: Discord.Message, index: number) => {
+let storageInited = false;
+let storagePromise: Promise<NodePersist.InitOptions>;
+const initStorage = async () => {
+	if (!storageInited) {
+		if (storagePromise === undefined) {
+			storagePromise = NodePersist.init({ dir: "data" });
+		}
+		try {
+			await storagePromise;
+		}
+		catch{
+			return null;
+		}
+		storageInited = true;
+	}
+};
+
+const sprocRequestKey = (message: Discord.Message) => {
+	return `${message.guild.id}+${message.author.id}$`;
+}
+
+const lastFromPersistent = async (message: Discord.Message) => {
+	await initStorage();
+	const key = sprocRequestKey(message);
+	const result = await NodePersist.getItem(key);
+	if (Array.isArray(result) && result.every(el => Array.isArray(el) && el.every(el => typeof el === "string"))) {
+		return lastSprocRequests[message.guild.id][message.author.id] = new CircularBuffer<Urls>(8, result as Urls[]);
+	}
+	return null;
+};
+
+const getLast = async (addTo: string[], message: Discord.Message, index: number) => {
+	let lastRequest: Urls;
 	const lastRequestGuild = lastSprocRequests[message.guild.id];
 	if (!lastRequestGuild) {
-		return false;
+		lastSprocRequests[message.guild.id] = {};
+		lastRequest = (await lastFromPersistent(message))?.last(index);
 	}
-	const lastRequest = lastRequestGuild[message.member.id]?.last(index);
+	else {
+		const lastRequestUser = lastRequestGuild[message.author.id];
+		if (!lastRequestUser) {
+			const fetchAttempt = (await lastFromPersistent(message));
+			if (!fetchAttempt) {
+				lastRequestGuild[message.author.id] = new CircularBuffer(8);
+			}
+			else {
+				lastRequest = fetchAttempt.last(index);
+			}
+		}
+		else {
+			lastRequest = lastRequestUser.last(index);
+		}
+	}
 	if (!lastRequest) {
 		return false;
 	}
@@ -479,7 +527,7 @@ const getLast = (addTo: string[], message: Discord.Message, index: number) => {
 
 const lastRegex = /^\$LAST([-~]([0-9]+))?$/;
 
-const execSproc: CommandFunction = (message, commandToken) => {
+const execSproc: CommandFunction = async (message, commandToken) => {
 	if (!hasChannelPermission(message, "ATTACH_FILES")) {
 		if (hasChannelPermission(message, "SEND_MESSAGES")) {
 			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
@@ -503,7 +551,7 @@ const execSproc: CommandFunction = (message, commandToken) => {
 			const match = lastRegex.exec(arg.toUpperCase());
 			if (match) {
 				const index = match[2] ? +match[2] : 0;
-				if (!getLast(attachments, message, index)) {
+				if (!(await getLast(attachments, message, index))) {
 					message.channel.send("Failed to retrieve last request").catch(catchHandler);
 					return;
 				}
@@ -521,7 +569,8 @@ const execSproc: CommandFunction = (message, commandToken) => {
 		message.channel.send("You have nothing to process").catch(catchHandler);
 		return;
 	}
-	executeSproc(attachments, args.map(arg => arg.toString())).then(async (result) => {
+	try {
+		const result = await executeSproc(attachments, args.map(arg => arg.toString()));
 		const output = result.sprocOutput.trim();
 		if (output.length != 0) {
 			try {
@@ -530,9 +579,7 @@ const execSproc: CommandFunction = (message, commandToken) => {
 				catchHandler(ex);
 			}
 		}
-		const lastRequestGuild = lastSprocRequests[message.guild.id] || (lastSprocRequests[message.guild.id] = {});
-		const lastRequestList = lastRequestGuild[message.author.id] || (lastRequestGuild[message.author.id] = new CircularBuffer(8));
-		const responses = lastRequestList.push([]);
+		const responses = [];
 		for (let i = 0; i < result.filePaths.length; ++i) {
 			try {
 				const attachment = new Discord.MessageAttachment(result.filePaths[i]);
@@ -553,10 +600,17 @@ const execSproc: CommandFunction = (message, commandToken) => {
 				}
 			}
 		}
+		const lastRequestGuild = lastSprocRequests[message.guild.id] || (lastSprocRequests[message.guild.id] = {});
+		const lastRequestList = lastRequestGuild[message.author.id] || (lastRequestGuild[message.author.id] = new CircularBuffer(8));
+		lastRequestList.push(responses);
+		const key = sprocRequestKey(message);
+		initStorage().then(() => {
+			NodePersist.setItem(key, lastRequestList.toArray());
+		});
 		cleanupSproc(result);
-	}).catch(error => {
+	} catch (error) {
 		message.channel.send(`Error: ${error}`).catch(catchHandler);
-	});
+	}
 };
 
 const noRolesMessage = "I can give you no roles";

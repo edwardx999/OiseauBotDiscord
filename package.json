@@ -1,28 +1,30 @@
 {
-  "name": "discord-bot-js",
-  "version": "0.0.0",
-  "description": "DiscordBotJS",
-  "main": "server.js",
-  "author": {
-    "name": ""
-  },
-  "scripts": {
-    "build": "tsc --build",
-    "clean": "tsc --build --clean"
-  },
-  "devDependencies": {
-    "@types/node": "14.11.2",
-    "@types/node-fetch": "2.5.7",
-    "@types/xml2js": "0.4.5",
-    "@types/string-similarity": "3.0.0",
-    "typescript": "^3.2.2"
-  },
-  "dependencies": {
-    "discord.js": "^12.3.1",
-    "encoding": "0.1.13",
-    "node-fetch": "2.6.1",
-    "string-similarity": "^4.0.2",
-    "uws": "^100.0.1",
-    "xml2js": "0.4.23"
-  }
+	"name": "discord-bot-js",
+	"version": "0.0.0",
+	"description": "DiscordBotJS",
+	"main": "server.js",
+	"author": {
+		"name": ""
+	},
+	"scripts": {
+		"build": "tsc --build",
+		"clean": "tsc --build --clean"
+	},
+	"devDependencies": {
+		"@types/node": "14.11.2",
+		"@types/node-fetch": "2.5.7",
+		"@types/xml2js": "0.4.5",
+		"@types/string-similarity": "3.0.0",
+		"@types/node-persist": "^3.1.0",
+		"typescript": "^3.2.2"
+	},
+	"dependencies": {
+		"discord.js": "^12.3.1",
+		"encoding": "0.1.13",
+		"node-fetch": "2.6.1",
+		"node-persist": "^3.1.0",
+		"string-similarity": "^4.0.2",
+		"uws": "^100.0.1",
+		"xml2js": "0.4.23"
+	}
 }
