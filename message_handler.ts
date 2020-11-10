@@ -8,7 +8,7 @@ import { CircularBuffer } from "./circular_buffer";
 import { sep as pathSeparator } from "path";
 import * as Cache from "cacache";
 
-type CommandFunction = (message: Discord.Message, commandToken: string) => any;
+type CommandFunction = (message: Discord.Message, commandToken: string, bot: Discord.Client) => any;
 
 const catchHandler = (err: any) => {
 	console.error(err);
@@ -98,10 +98,10 @@ function noRoleExistReponse(message: Discord.Message, roleName: string) {
 	const desiredNormalized = normalizeUppercase(roleName);
 	const nearest = StringSimilarity.findBestMatch(desiredNormalized, rolesNormalized);
 	deleteExtraneous(message);
-	if (nearest.bestMatchIndex < rolesNormalized.length && nearest.bestMatch.rating > 0) {
-		return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${roles[nearest.bestMatchIndex].name}?`).catch(catchHandler);
-	}
-	return message.channel.send(`<@${message.author.id}>, the role ${roleName} does not exist`).catch(catchHandler);
+	const response = nearest.bestMatchIndex < rolesNormalized.length && nearest.bestMatch.rating > 0 ?
+		`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${roles[nearest.bestMatchIndex].name}?` :
+		`<@${message.author.id}>, the role ${roleName} does not exist`;
+	return message.channel.send(response).catch(catchHandler).then(message => { if (message) { deleteExtraneous(message); } });
 }
 
 function findRole(roles: Discord.RoleManager, roleName: string) {
@@ -448,12 +448,12 @@ const hangman: CommandFunction = (message, commandToken) => {
 	}
 };
 
-function hasGuildPermission(message: Discord.Message, permission: Discord.PermissionString) {
+function hasGuildPermission(message: Discord.Message, permission: Discord.BitFieldResolvable<Discord.PermissionString>) {
 	const permissions = message.guild.me.permissions;
 	return permissions.has(permission);
 }
 
-function hasChannelPermission(message: Discord.Message, permission: Discord.PermissionString) {
+function hasChannelPermission(message: Discord.Message, permission: Discord.BitFieldResolvable<Discord.PermissionString>) {
 	const permissions = message.guild.me.permissionsIn(message.channel);
 	return permissions.has(permission);
 }
@@ -596,7 +596,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 
 const noRolesMessage = "I can give you no roles";
 
-const listRoles: CommandFunction = (message, commandToken) => {
+const listRoles: CommandFunction = (message) => {
 	if (!hasGuildPermission(message, "MANAGE_ROLES")) {
 		message.channel.send(noRolesMessage).catch(catchHandler);
 		return;
@@ -621,12 +621,93 @@ const listRoles: CommandFunction = (message, commandToken) => {
 	message.channel.send(response).catch(catchHandler);
 }
 
+const fitsEmojiNamePattern = (text: string) => {
+	return text.length > 2 && text.startsWith(":") && text.endsWith(":");
+};
+
+const emojiSpec = /^<:(.+):([0-9]+)>$/;
+const parseEmojiSpec = (text: string) => {
+	return emojiSpec.exec(text);
+};
+
+const extractEmojiName = (text: string) => {
+	return text.substr(1, text.length - 2);
+};
+
+interface MessageMatch {
+	guild: string,
+	channel: string,
+	message: string
+};
+const messageRegex = /^(?:https?:\/\/)?discord.com\/channels\/([0-9]+)\/([0-9]+)\/([0-9]+)$/;
+const parseMessageLink = (link: string): MessageMatch => {
+	const match = messageRegex.exec(link);
+	if (match) {
+		return {
+			guild: match[1],
+			channel: match[2],
+			message: match[3]
+		};
+	}
+	return null;
+};
+
+const react: CommandFunction = async (message, commandToken, bot) => {
+	const args = quoteTokenize(pastFirstToken(message.content, commandToken));
+	if (args.length >= 2) {
+		const emojis: Discord.EmojiIdentifierResolvable[] = [];
+		const messages: MessageMatch[] = [];
+		for (let i = 0; i < args.length; ++i) {
+			const arg = args[i];
+			if (fitsEmojiNamePattern(arg)) {
+				const emoji = findEmoji(extractEmojiName(arg), bot);
+				if (emoji) {
+					emojis.push(emoji);
+				}
+			}
+			else {
+				const match = parseEmojiSpec(arg);
+				if (match) {
+					emojis.push(match[2]);
+				}
+				else {
+					const messageMatch = parseMessageLink(arg);
+					if (messageMatch) {
+						messages.push(messageMatch);
+					}
+				}
+			}
+		}
+		for (const emoji of emojis) {
+			for (const messageInfo of messages) {
+				const guild = bot.guilds.cache.get(messageInfo.guild);
+				if (guild) {
+					const channel = guild.channels.cache.get(messageInfo.channel);
+					if (channel && channel.type === "text" && guild.me.permissionsIn(channel).has("ADD_REACTIONS")) {
+						try {
+							const message = await (channel as Discord.TextChannel).messages.fetch(messageInfo.message);
+							message.react(emoji).catch(catchHandler);
+						} catch (err) {
+							catchHandler(err);
+						}
+					}
+				}
+			}
+		}
+	}
+};
+
 const commands: Record<string, Record<string, Command>> = {
 	"": {
 		"!sproc": {
 			command: execSproc,
 			explanation: "Uses sproc on given images.\nYou can either attach files, or use links and the special variable $LAST (last result) before the list of commands",
 			usage: "[Attach files], !sproc [links] [sproc_commands]"
+		},
+		"!react": {
+			command: react,
+			explanation: "Reacts to given messages with given emojis",
+			usage: "!react [emoji | message_link] ..."
 		}
 	},
 	"bot-spam": {
@@ -636,8 +717,7 @@ const commands: Record<string, Record<string, Command>> = {
 		"!hangman": { command: hangman, explanation: "Play composer hangman!", usage: "!hangman [help]" },
 		"!hm": { command: hangman, explanation: "Play composer hangman!", usage: "!hm [help]" }
 	},
-	"new-roles":
-	{
+	"new-roles": {
 		"!giveme": { command: giveRole, explanation: "Gives you a role", usage: "!giveme <role>" },
 		"!takeaway": { command: takeRole, explanation: "Takes a role from you", usage: "!takeaway <role>" },
 		"!roles": { command: listRoles, explanation: "List the roles I can give", usage: "!roles" }
@@ -686,18 +766,26 @@ function help(message: Discord.Message, commandToken: string) {
 	}
 };
 
+const findEmoji = (emojiName: string, bot: Discord.Client) => {
+	for (const [id, guild] of bot.guilds.cache) {
+		const emojis = guild.emojis.cache;
+		for (const [emoji_id, emoji] of emojis) {
+			if (emojiName === emoji.name) {
+				return emoji;
+			}
+		}
+	}
+	return undefined;
+};
+
 const sendEmoji = (message: Discord.Message, bot: Discord.Client) => {
 	const text = message.content;
-	if (text.length > 2 && text.startsWith(":") && text.endsWith(":") && hasChannelPermission(message, "USE_EXTERNAL_EMOJIS")) {
-		const emojiName = text.substr(1, text.length - 2);
-		for (const [id, guild] of bot.guilds.cache) {
-			const emojis = guild.emojis.cache;
-			for (const [emoji_id, emoji] of emojis) {
-				if (emojiName === emoji.name) {
-					message.channel.send(`${emoji}`).catch(catchHandler);
-					return true;
-				}
-			}
+	if (fitsEmojiNamePattern(text) && hasChannelPermission(message, "USE_EXTERNAL_EMOJIS")) {
+		const emojiName = extractEmojiName(text);
+		const emoji = findEmoji(emojiName, bot);
+		if (emoji) {
+			message.channel.send(`${emoji}`).catch(catchHandler);
+			return true;
 		}
 	}
 	return false;
@@ -716,7 +804,7 @@ const createMessageHandler = (bot: Discord.Client) => {
 					if (firstWord.startsWith(commandFlag)) {
 						const command = commands[firstWord];
 						if (command) {
-							command.command(message, firstWord);
+							command.command(message, firstWord, bot);
 							return true;
 						}
 					}
