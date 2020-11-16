@@ -461,11 +461,18 @@ function hasChannelPermission(message: Discord.Message, permission: Discord.BitF
 type GuildId = string;
 type UserId = string;
 type Urls = string[];
-const lastSprocRequests: Record<GuildId, Record<UserId, CircularBuffer<Urls>>> = {};
+type LastBuffer = { buffer: CircularBuffer<Urls>, array: Urls[] };
+const lastSprocRequests: Record<GuildId, Record<UserId, LastBuffer>> = {};
 
 const sprocRequestKey = (message: Discord.Message) => {
 	return `${message.guild.id}+${message.author.id}$`;
 }
+
+const createLastBuffer = (init?: Urls[]): LastBuffer => {
+	const capacity = 16;
+	const array: Urls[] = Array.from({ length: capacity });
+	return { buffer: new CircularBuffer<Urls>(capacity, init), array };
+};
 
 const storagePath = `.${pathSeparator}data`;
 const lastFromPersistent = async (message: Discord.Message) => {
@@ -474,11 +481,11 @@ const lastFromPersistent = async (message: Discord.Message) => {
 		const cached = await Cache.get(storagePath, key);
 		const result = JSON.parse(cached.data.toString());
 		if (Array.isArray(result) && result.every(el => Array.isArray(el) && el.every(el => typeof el === "string"))) {
-			return lastSprocRequests[message.guild.id][message.author.id] = new CircularBuffer<Urls>(8, result as Urls[]);
+			return lastSprocRequests[message.guild.id][message.author.id] = createLastBuffer(result as Urls[]);
 		}
 	} catch {
 	}
-	lastSprocRequests[message.guild.id][message.author.id] = new CircularBuffer(8);
+	lastSprocRequests[message.guild.id][message.author.id] = createLastBuffer();
 	return null;
 };
 
@@ -487,15 +494,15 @@ const getLast = async (addTo: string[], message: Discord.Message, index: number)
 	const lastRequestGuild = lastSprocRequests[message.guild.id];
 	if (!lastRequestGuild) {
 		lastSprocRequests[message.guild.id] = {};
-		lastRequest = (await lastFromPersistent(message))?.last(index);
+		lastRequest = (await lastFromPersistent(message))?.buffer.last(index);
 	}
 	else {
 		const lastRequestUser = lastRequestGuild[message.author.id];
 		if (!lastRequestUser) {
-			lastRequest = (await lastFromPersistent(message))?.last(index);
+			lastRequest = (await lastFromPersistent(message))?.buffer.last(index);
 		}
 		else {
-			lastRequest = lastRequestUser.last(index);
+			lastRequest = lastRequestUser.buffer.last(index);
 		}
 	}
 	if (!lastRequest) {
@@ -585,10 +592,12 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 		}
 		cleanupSproc(result);
 		const lastRequestGuild = lastSprocRequests[message.guild.id] || (lastSprocRequests[message.guild.id] = {});
-		const lastRequestList = lastRequestGuild[message.author.id] || (lastRequestGuild[message.author.id] = new CircularBuffer(8));
-		lastRequestList.push(responses);
-		const key = sprocRequestKey(message);
-		Cache.put(storagePath, key, JSON.stringify(lastRequestList.toArray())).catch(catchHandler);
+		const lastRequestList = lastRequestGuild[message.author.id] || (lastRequestGuild[message.author.id] = createLastBuffer());
+		if (responses.length > 0) {
+			lastRequestList.buffer.push(responses);
+			const key = sprocRequestKey(message);
+			Cache.put(storagePath, key, JSON.stringify(lastRequestList.buffer.toArray(lastRequestList.array))).catch(catchHandler);
+		}
 	} catch (error) {
 		message.channel.send(`Error: ${error}`).catch(catchHandler);
 	}

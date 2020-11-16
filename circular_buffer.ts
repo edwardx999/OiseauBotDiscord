@@ -62,21 +62,32 @@ class CircularBuffer<T>
 		return this.head;
 	}
 
-	toArray() {
-		const ret: T[] = [];
+	toArray(prealloced?: T[]) {
+		if (prealloced === undefined) {
+			prealloced = Array.from({ length: this.size() });
+		}
+		this.placeInArray(prealloced);
+		return prealloced;
+	}
+
+	placeInArray(arr: T[]) {
 		if (this.full) {
+			let j = 0;
+			arr.length = this.data.length;
 			for (let i = this.head; i < this.data.length; ++i) {
-				ret.push(this.data[i]);
+				arr[j] = this.data[i];
+				++j;
 			}
 			for (let i = 0; i < this.head; ++i) {
-				ret.push(this.data[i]);
+				arr[j] = this.data[i];
+				++j;
 			}
 		}
 		else {
+			arr.length = this.head;
 			for (let i = 0; i < this.head; ++i) {
-				ret.push(this.data[i]);
+				arr[i] = this.data[i];
 			}
 		}
-		return ret;
 	}
 }
