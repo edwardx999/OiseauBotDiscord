@@ -40,7 +40,6 @@
   <ItemGroup>
     <TypeScriptCompile Include="bot.ts" />
     <TypeScriptCompile Include="circular_buffer.ts" />
-    <TypeScriptCompile Include="file_util.ts" />
     <TypeScriptCompile Include="hangman.ts">
       <SubType>Code</SubType>
     </TypeScriptCompile>
@@ -53,6 +52,7 @@
     <TypeScriptCompile Include="sproc.ts">
       <SubType>Code</SubType>
     </TypeScriptCompile>
+    <TypeScriptCompile Include="util.ts" />
     <TypeScriptCompile Include="wiki_composer.ts">
       <SubType>Code</SubType>
     </TypeScriptCompile>

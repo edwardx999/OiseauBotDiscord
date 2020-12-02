@@ -1,4 +1,4 @@
-import { createTempDir, pathSeparator, spawnTimeout, SpawnResult } from "./file_util";
+import { createTempDir, pathSeparator, spawnTimeout, SpawnResult, makeCallOnce } from "./util";
 import * as fs from "fs";
 import * as cp from "child_process";
 import * as glob from "glob";
@@ -8,7 +8,21 @@ import { clearTimeout } from "timers";
 export { render, cleanup, OutputFormats };
 
 const inputFileName = "music.ly";
-const version = "2.18.2";
+const versionRegex = /GNU LilyPond ([0-9]+\.[0-9]+\.[0-9]+)/
+const version = makeCallOnce<string>(async (resolve, reject) => {
+	try {
+		const lilypond = await spawnTimeout("lilypond", ["--version"], 20000);
+		const versionString = versionRegex.exec(lilypond.stdout);
+		if (versionString) {
+			resolve(versionString[1]);
+		}
+		else {
+			reject("Failed to find lilypond version");
+		}
+	} catch {
+		reject("Failed to find lilypond");
+	}
+});
 
 const enum OutputFormats {
 	IMAGES = "images",
@@ -23,11 +37,12 @@ interface Result {
 };
 
 const render = async (lilyCode: string, formats: Partial<Record<OutputFormats, any>>, timeoutMs?: number): Promise<Result> => {
+	const versionNumber = await version();
 	const directory = await createTempDir();
 	timeoutMs = timeoutMs || 60000;
 	try {
 		const lilyFile = await fs.promises.writeFile(`${directory}${pathSeparator}${inputFileName}`,
-			`\\version "${version}"
+			`\\version "${versionNumber}"
 \\header {
 	tagline = ""
 	title = ""

@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as fetch from "node-fetch";
 import * as cp from "child_process";
-import { createTempDir, pathSeparator, spawnTimeout } from "./file_util";
+import { createTempDir, pathSeparator, spawnTimeout } from "./util";
 
 export { Result, executeSproc, cleanupSproc }
 

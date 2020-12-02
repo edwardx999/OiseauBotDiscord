@@ -1,5 +1,6 @@
 import * as fetch from "node-fetch";
-import * as xml from "xml2js"
+import * as xml from "xml2js";
+import { makeCallOnce } from "./util";
 export { fetchComposerList, ComposerData, fetchComposerPageSize, fetchComposerCategories }
 interface ComposerData {
 	name: string;
@@ -7,11 +8,6 @@ interface ComposerData {
 	pageUrl?: string;
 	pageSize?: number;
 }
-
-let composerList: ComposerData[] | undefined;
-
-let currentFetchRequest: Promise<fetch.Response> | undefined;
-let currentListPromise: Promise<ComposerData[]> | undefined;
 
 const unknownDates = "Unknown dates";
 
@@ -120,81 +116,62 @@ async function fetchComposerCategories(href?: string) {
 	return [];
 }
 
-async function fetchComposerList() {
-	if (composerList) {
-		return composerList;
-	}
-	if (currentListPromise) {
-		return await currentListPromise;
-	}
-	if (!currentFetchRequest) {
-		currentFetchRequest = fetch.default("https://en.wikipedia.org/wiki/List_of_composers_by_name");
-	}
-	const wikipediaData = await currentFetchRequest;
-	currentFetchRequest = undefined;
-	if (currentListPromise) {
-		await currentListPromise;
-	}
-	else {
-		currentListPromise = new Promise(async (resolve, reject) => {
-			if (wikipediaData.ok) {
-				const body = await wikipediaData.textConverted();
-				if (composerList) {
-					return composerList;
+const listRequest = makeCallOnce<ComposerData[]>(async (resolve, reject) => {
+	try {
+		const wikipediaData = await fetch.default("https://en.wikipedia.org/wiki/List_of_composers_by_name");
+		if (wikipediaData.ok) {
+			const body = await wikipediaData.textConverted();
+			const startTag = `<div class="div-col columns column-width`;
+			const endTag = `</div>`;
+			const composerList: ComposerData[] = [];
+			let blockStart = 0;
+			const xmlJobs: Promise<any>[] = [];
+			while (true) {
+				blockStart = body.indexOf(startTag, blockStart);
+				if (blockStart < 0) {
+					break;
 				}
-				const startTag = `<div class="div-col columns column-width`;
-				const endTag = `</div>`;
-				const tempComposerList: ComposerData[] = [];
-				let blockStart = 0;
-				const xmlJobs: Promise<any>[] = [];
-				while (true) {
-					blockStart = body.indexOf(startTag, blockStart);
-					if (blockStart < 0) {
-						break;
-					}
-					let blockEnd = body.indexOf(endTag, blockStart + startTag.length);
-					if (blockEnd < 0) {
-						break;
-					}
-					blockEnd += endTag.length;
-					xmlJobs.push(xml.parseStringPromise((body.substring(blockStart, blockEnd))));
-					blockStart = blockEnd;
+				let blockEnd = body.indexOf(endTag, blockStart + startTag.length);
+				if (blockEnd < 0) {
+					break;
 				}
-				for (const job of xmlJobs) {
-					const result = await job;
-					const ul = result.div?.ul;
-					if (ul) {
-						const li = ul[0]?.li;
-						if (li && li.length) {
-							for (let i = 0; i < li.length; ++i) {
-								const elem = li[i];
-								if (elem.a) {
-									const title = elem.a[0].$.title;
-									const href = elem.a[0].$.href;
-									const content = elem._;
-									const name = elem.a[0]._;
-									if (title && href && name) {
-										if ((title as string).indexOf("page does not exist") >= 0) {
-											tempComposerList.push({ name: name, dates: getDatesString(content) })
-										}
-										else {
-											tempComposerList.push({ name: name, dates: getDatesString(content), pageUrl: href })
-										}
+				blockEnd += endTag.length;
+				xmlJobs.push(xml.parseStringPromise((body.substring(blockStart, blockEnd))));
+				blockStart = blockEnd;
+			}
+			for (const job of xmlJobs) {
+				const result = await job;
+				const ul = result.div?.ul;
+				if (ul) {
+					const li = ul[0]?.li;
+					if (li && li.length) {
+						for (let i = 0; i < li.length; ++i) {
+							const elem = li[i];
+							if (elem.a) {
+								const title = elem.a[0].$.title;
+								const href = elem.a[0].$.href;
+								const content = elem._;
+								const name = elem.a[0]._;
+								if (title && href && name) {
+									if ((title as string).indexOf("page does not exist") >= 0) {
+										composerList.push({ name: name, dates: getDatesString(content) })
+									}
+									else {
+										composerList.push({ name: name, dates: getDatesString(content), pageUrl: href })
 									}
 								}
 							}
 						}
 					}
 				}
-				composerList = tempComposerList;
-				currentListPromise = undefined;
-				resolve(composerList);
 			}
-			else {
-				resolve();
-			}
-		});
-		return await currentListPromise;
+			resolve(composerList);
+		}
+	} catch {
+		reject();
 	}
+});
 
+async function fetchComposerList() {
+	return listRequest();
 }

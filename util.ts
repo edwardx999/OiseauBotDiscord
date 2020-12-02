@@ -4,7 +4,7 @@ import * as os from "os";
 import * as cp from "child_process";
 
 
-export { createTempDir, pathSeparator, spawnTimeout, SpawnResult };
+export { createTempDir, pathSeparator, spawnTimeout, SpawnResult, makeCallOnce };
 
 const tmpDir = os.tmpdir();
 
@@ -17,7 +17,6 @@ interface SpawnResult {
 	stderr: string;
 	exitCode?: number; // if not present, timed out
 }
-
 
 const spawnTimeout = (command: string, args: string[], timeoutMs: number, options?: cp.SpawnOptions) => {
 	return new Promise<SpawnResult>((resolve, reject) => {
@@ -46,3 +45,23 @@ const spawnTimeout = (command: string, args: string[], timeoutMs: number, option
 		}
 	});
 };
+
+function makeCallOnce<T>(callback: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => any) {
+	let promise: Promise<T> = null;
+	let result: T;
+	return async () => {
+		if (result !== undefined) {
+			return result;
+		}
+		if (promise == null) {
+			promise = new Promise<T>((resolve, reject) => callback(resolve, reject));
+		}
+		try {
+			result = await promise;
+			return result;
+		} catch (err) {
+			promise = null;
+			throw err;
+		}
+	};
+}
