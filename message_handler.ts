@@ -660,7 +660,13 @@ const execLily: CommandFunction = async (message, commandToken) => {
 		}
 		catch (error) {
 			if (hasChannelPermission(message, "SEND_MESSAGES")) {
-				message.channel.send(`Error: \`\`\`${error}\`\`\``).catch(catchHandler);
+				const errorMessage = `${error}`;
+				if (errorMessage.length > 1800) {
+					message.channel.send(`Error (Truncated): \`\`\`${errorMessage.substr(0, 1800)}\`\`\``).catch(catchHandler);
+				}
+				else {
+					message.channel.send(`Error: \`\`\`${errorMessage}\`\`\``).catch(catchHandler);
+				}
 			}
 		}
 	}
