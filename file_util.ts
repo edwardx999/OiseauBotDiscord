@@ -8,9 +8,8 @@ export { createTempDir, pathSeparator, spawnTimeout, SpawnResult };
 
 const tmpDir = os.tmpdir();
 
-const createTempDir = async () => {
-	const tempFolder = await fs.promises.mkdtemp(tmpDir + pathSeparator);
-	return tempFolder;
+const createTempDir = () => {
+	return fs.promises.mkdtemp(tmpDir + pathSeparator);
 };
 
 interface SpawnResult {
