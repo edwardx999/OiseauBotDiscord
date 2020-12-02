@@ -628,8 +628,15 @@ const execLily: CommandFunction = async (message, commandToken) => {
 						case "mp3":
 							ret[arg] = true;
 							break;
+						case "png":
+						case "image":
+							ret["images"] = true;
+							break;
+						case "mid":
+							ret["midi"] = true;
+							break;
 						default:
-							throw `Invalid format ${arg}`;
+							throw `Invalid format "${arg}"`;
 					}
 				}
 				return ret;
