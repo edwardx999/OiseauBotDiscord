@@ -11,7 +11,6 @@ const tmpDir = os.tmpdir();
 const createTempDir = async () => {
 	const tempFolder = await fs.promises.mkdtemp(tmpDir + pathSeparator);
 	return tempFolder;
-	cp.spawn("", [],)
 };
 
 interface SpawnResult {
