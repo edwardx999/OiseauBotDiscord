@@ -40,7 +40,11 @@
   <ItemGroup>
     <TypeScriptCompile Include="bot.ts" />
     <TypeScriptCompile Include="circular_buffer.ts" />
+    <TypeScriptCompile Include="file_util.ts" />
     <TypeScriptCompile Include="hangman.ts">
+      <SubType>Code</SubType>
+    </TypeScriptCompile>
+    <TypeScriptCompile Include="lilypond.ts">
       <SubType>Code</SubType>
     </TypeScriptCompile>
     <TypeScriptCompile Include="message_handler.ts">

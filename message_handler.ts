@@ -7,6 +7,7 @@ import { executeSproc, cleanupSproc } from "./sproc";
 import { CircularBuffer } from "./circular_buffer";
 import { sep as pathSeparator } from "path";
 import * as Cache from "cacache";
+import * as Lily from "./lilypond";
 
 type CommandFunction = (message: Discord.Message, commandToken: string, bot: Discord.Client) => any;
 
@@ -603,6 +604,68 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 	}
 };
 
+const endCodeBlockRegex = /```([\s\S]*)```$/;
+const execLily: CommandFunction = async (message, commandToken) => {
+	if (!hasChannelPermission(message, "ATTACH_FILES")) {
+		if (hasChannelPermission(message, "SEND_MESSAGES")) {
+			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
+		}
+		return;
+	}
+	const past = pastFirstToken(message.content, commandToken);
+	const codeBlock = endCodeBlockRegex.exec(past);
+	if (codeBlock) {
+		const codeText = codeBlock[1];
+		const args = tokenize(past.substr(0, codeBlock.index));
+		try {
+			const options = (args.length == 0) ? { images: true } : (() => {
+				let ret = {};
+				for (const arg of args) {
+					switch (arg) {
+						case "images":
+						case "pdf":
+						case "midi":
+						case "mp3":
+							ret[arg] = true;
+							break;
+						default:
+							throw `Invalid format ${arg}`;
+					}
+				}
+				return ret;
+			})();
+			const result = await Lily.render(codeText, options);
+			try {
+				for (let i = 0; i < result.filePaths.length; ++i) {
+					try {
+						const attachment = new Discord.MessageAttachment(result.filePaths[i]);
+						await message.channel.send(attachment);
+					}
+					catch (error) {
+						if (error instanceof Discord.DiscordAPIError) {
+							try {
+								const attachmentTooLarge = 40005;
+								const errorMessage = error.code === attachmentTooLarge ? "(Result too large)" : `Error: ${error.message}`;
+								await message.channel.send(errorMessage);
+							} catch (ex) {
+								catchHandler(ex);
+							}
+						}
+					}
+				}
+			}
+			finally {
+				Lily.cleanup(result);
+			}
+		}
+		catch (error) {
+			if (hasChannelPermission(message, "SEND_MESSAGES")) {
+				message.channel.send(`Error: \`\`\`${error}\`\`\``).catch(catchHandler);
+			}
+		}
+	}
+};
+
 const noRolesMessage = "I can give you no roles";
 
 const listRoles: CommandFunction = (message) => {
@@ -711,12 +774,17 @@ const commands: Record<string, Record<string, Command>> = {
 		"!sproc": {
 			command: execSproc,
 			explanation: "Uses sproc on given images.\nYou can either attach files, or use links and the special variable $LAST (last result) before the list of commands",
-			usage: "[Attach files], !sproc [links] [sproc_commands]"
+			usage: "[Attach files], !sproc [links] ... [sproc_commands]"
 		},
 		"!react": {
 			command: react,
 			explanation: "Reacts to given messages with given emojis",
 			usage: "!react [emoji | message_link] ..."
+		},
+		"!lily": {
+			command: execLily,
+			explanation: "Make a lilypond score/audio given lilypond code in code block. If no formats are specified, will give images. If requesting midi or mp3, you must specify a \\midi block. If requesting images or pdf, you must specify a \\layout block.",
+			usage: "!lily [images|pdf|midi|mp3] ... <code block with lilypond code>"
 		}
 	},
 	"bot-spam": {

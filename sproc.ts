@@ -1,20 +1,18 @@
 import * as fs from "fs";
-import * as os from "os";
-import { sep as pathSeparator } from "path";
 import * as fetch from "node-fetch";
 import * as cp from "child_process";
+import { createTempDir, pathSeparator, spawnTimeout } from "./file_util";
 
-export { SprocResult, executeSproc, cleanupSproc }
+export { Result, executeSproc, cleanupSproc }
 
-interface SprocResult {
+interface Result {
 	sprocOutput: string;
-	folderToCleanUp: string;
+	folder: string;
 	filePaths: string[];
 }
 
-async function executeSproc(fileUrls: string[], commands: string[]): Promise<SprocResult> {
-	const tmpDir = os.tmpdir();
-	const tempFolder = await fs.promises.mkdtemp(tmpDir + pathSeparator);
+async function executeSproc(fileUrls: string[], commands: string[], timeoutMs?: number): Promise<Result> {
+	const tempFolder = await createTempDir();
 	try {
 		const downloadJobs = fileUrls.map((url, index) => {
 			return fetch.default(url);
@@ -47,41 +45,21 @@ async function executeSproc(fileUrls: string[], commands: string[]): Promise<Spr
 		}
 		const outputPath = tempFolder + pathSeparator + "output";
 		await fs.promises.mkdir(outputPath);
-		const output = await new Promise<string>((resolve, reject) => {
-			const sproc = cp.spawn(`.${pathSeparator}sproc_lim`, [tempFolder].concat(commands));
-			let stdout = "";
-			let stderr = "";
-			let timedOut = false;
-			const timeout = setTimeout(() => {
-				sproc.kill();
-				reject("Timeout");
-				timedOut = true;
-			}, 60000);
-			sproc.stdout.on("data", data => stdout += data);
-			sproc.stderr.on("data", data => stderr += data);
-			sproc.on("close", code => {
-				if (!timedOut) {
-					if (code != 0) {
-						console.log(code);
-						console.log(stdout);
-						console.log(stderr);
-						reject(stdout);
-					}
-					else {
-						resolve(stdout);
-					}
-					clearTimeout(timeout);
-				}
-			});
-		});
+		const output = await spawnTimeout(`.${pathSeparator}sproc_lim`, [tempFolder].concat(commands), timeoutMs || 60000);
+		if (output.exitCode === undefined) {
+			throw "Timeout";
+		}
+		if (output.exitCode != 0) {
+			throw output.stdout;
+		}
 		const outputFiles = (await fs.promises.readdir(outputPath)).map(filename => outputPath + pathSeparator + filename).sort();
-		return { filePaths: outputFiles, folderToCleanUp: tempFolder, sprocOutput: output };
+		return { filePaths: outputFiles, folder: tempFolder, sprocOutput: output.stdout };
 	} catch (e) {
 		await fs.promises.rmdir(tempFolder, { recursive: true });
 		throw e;
 	}
 }
 
-async function cleanupSproc(result: SprocResult) {
-	return await fs.promises.rmdir(result.folderToCleanUp, { recursive: true });
+async function cleanupSproc(result: Result) {
+	return await fs.promises.rmdir(result.folder, { recursive: true });
 }
