@@ -72,7 +72,7 @@ ${lilyCode}
 		const filePaths: string[] = [];
 		const globExtensions: string[] = [];
 		if (formats[OutputFormats.IMAGES]) {
-			const sproc = await spawnTimeout("sproc", ["*.png", "-hp", "0", "tol:1", "bg:254", "-vp", "0", "tol:1", "bg:254"], timeoutMs, { cwd: directory });
+			const sproc = await spawnTimeout("sproc", ["*.png", "-hp", "1", "tol:1", "bg:254", "-vp", "1", "tol:1", "bg:254"], timeoutMs, { cwd: directory });
 			globExtensions.push("png");
 		}
 		if (formats[OutputFormats.PDF]) {
@@ -114,29 +114,35 @@ const getGlob = (pattern: string) => {
 };
 
 const convertMidi = (directory: string, filename: string, timeoutMs: number) => {
-	return new Promise<void>((resolve) => {
-		const timidify = cp.spawn("wsl", ["timidity", filename, "-Ow", "-o", "-"], { cwd: directory });
-		const ffmpeg = cp.spawn("ffmpeg", ["-i", "-", "-acodec", "libmp3lame", "-q:a", "8", "-ab", "128k", `${filename}.mp3`], { cwd: directory });
-		let timedOut = false;
-		let otherClosed = false;
-		const timeout = setTimeout(() => {
-			timidify.kill();
-			ffmpeg.kill();
-			timedOut = true;
-		}, timeoutMs);
-		timidify.stdout.pipe(ffmpeg.stdin);
-		const closeCallback = (code: number) => {
-			if (otherClosed) {
-				resolve();
-			}
-			else {
-				otherClosed = true;
-			}
-			if (!timedOut) {
-				clearTimeout(timeout);
-			}
-		};
-		timidify.on("close", closeCallback);
-		ffmpeg.on("close", closeCallback);
+	return new Promise<void>((resolve, reject) => {
+		try {
+			// there are problems with piped input being corrupt
+			const timidify = cp.spawn("wsl", ["timidity", filename, "-Ow", "-o", "-"], { cwd: directory });
+			const ffmpeg = cp.spawn("ffmpeg", ["-i", "-", "-acodec", "libmp3lame", "-q:a", "8", "-ab", "128k", `${filename}.mp3`], { cwd: directory });
+			let timedOut = false;
+			let otherClosed = false;
+			const timeout = setTimeout(() => {
+				timidify.kill();
+				ffmpeg.kill();
+				timedOut = true;
+			}, timeoutMs);
+			ffmpeg.stderr.on("data", data => console.log(data.toString()));
+			timidify.stdout.pipe(ffmpeg.stdin);
+			const closeCallback = (code: number) => {
+				if (otherClosed) {
+					resolve();
+				}
+				else {
+					otherClosed = true;
+				}
+				if (!timedOut) {
+					clearTimeout(timeout);
+				}
+			};
+			timidify.on("close", closeCallback);
+			ffmpeg.on("close", closeCallback);
+		} catch (err) {
+			reject(err);
+		}
 	});
 }

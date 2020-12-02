@@ -319,9 +319,9 @@ function startGame(message: Discord.Message, difficult: Difficulty) {
 			message.channel.send(hangmanMessage(game, `Game start. Difficulty: ${difficult}`, message.author, false));
 		}
 		else {
-			message.channel.send("Could not retrieve composer database");
+			message.channel.send("Could not retrieve composer database").catch(catchHandler);
 		}
-	});
+	}, () => message.channel.send("Could not retrieve composer database").catch(catchHandler));
 }
 
 function hangmanGuess(message: Discord.Message, game: ComposerHangman, guess: string) {
