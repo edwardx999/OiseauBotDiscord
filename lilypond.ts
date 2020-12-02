@@ -114,9 +114,12 @@ const getGlob = (pattern: string) => {
 };
 
 const convertMidi = (directory: string, filename: string, timeoutMs: number) => {
+	const inputFile = directory.replace("C:\\", "/mnt/c/").replace(/\\/g, "/") + "/" + filename;
+	return spawnTimeout("wsl", ["bash", "timidity_convert.sh", inputFile, `${inputFile}.mp3`], timeoutMs);
+	// there are problems with piped input being corrupt
+	/*
 	return new Promise<void>((resolve, reject) => {
 		try {
-			// there are problems with piped input being corrupt
 			const timidify = cp.spawn("wsl", ["timidity", filename, "-Ow", "-o", "-"], { cwd: directory });
 			const ffmpeg = cp.spawn("ffmpeg", ["-i", "-", "-acodec", "libmp3lame", "-q:a", "8", "-ab", "128k", `${filename}.mp3`], { cwd: directory });
 			let timedOut = false;
@@ -145,4 +148,5 @@ const convertMidi = (directory: string, filename: string, timeoutMs: number) => 
 			reject(err);
 		}
 	});
+	*/
 }

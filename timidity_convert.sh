@@ -1,0 +1,1 @@
+timidity $1 -Ow -o - | ffmpeg -i - -acodec libmp3lame -ab 128k $2
