@@ -1,9 +1,9 @@
-import * as fs from "fs";
+import * as Sproc from "fs";
 import * as fetch from "node-fetch";
 import * as cp from "child_process";
 import { createTempDir, pathSeparator, spawnTimeout } from "./util";
 
-export { Result, executeSproc, cleanupSproc }
+export { Result, execute, cleanup }
 
 interface Result {
 	sprocOutput: string;
@@ -11,7 +11,7 @@ interface Result {
 	filePaths: string[];
 }
 
-async function executeSproc(fileUrls: string[], commands: string[], timeoutMs?: number): Promise<Result> {
+async function execute(fileUrls: string[], commands: string[], timeoutMs?: number): Promise<Result> {
 	const tempFolder = await createTempDir();
 	try {
 		const downloadJobs = fileUrls.map((url, index) => {
@@ -32,7 +32,7 @@ async function executeSproc(fileUrls: string[], commands: string[], timeoutMs?: 
 						throw `Unsupported file type "${type}"`;
 				}
 			})();
-			const fileStream = fs.createWriteStream(path);
+			const fileStream = Sproc.createWriteStream(path);
 			await new Promise((resolve, reject) => {
 				request.body.pipe(fileStream);
 				request.body.on("error", err => {
@@ -44,7 +44,7 @@ async function executeSproc(fileUrls: string[], commands: string[], timeoutMs?: 
 			});
 		}
 		const outputPath = tempFolder + pathSeparator + "output";
-		await fs.promises.mkdir(outputPath);
+		await Sproc.promises.mkdir(outputPath);
 		const output = await spawnTimeout(`.${pathSeparator}sproc_lim`, [tempFolder].concat(commands), timeoutMs || 60000);
 		if (output.exitCode === undefined) {
 			throw "Timeout";
@@ -52,14 +52,14 @@ async function executeSproc(fileUrls: string[], commands: string[], timeoutMs?: 
 		if (output.exitCode != 0) {
 			throw output.stdout;
 		}
-		const outputFiles = (await fs.promises.readdir(outputPath)).map(filename => outputPath + pathSeparator + filename).sort();
+		const outputFiles = (await Sproc.promises.readdir(outputPath)).map(filename => outputPath + pathSeparator + filename).sort();
 		return { filePaths: outputFiles, folder: tempFolder, sprocOutput: output.stdout };
 	} catch (e) {
-		await fs.promises.rmdir(tempFolder, { recursive: true });
+		await Sproc.promises.rmdir(tempFolder, { recursive: true });
 		throw e;
 	}
 }
 
-async function cleanupSproc(result: Result) {
-	return await fs.promises.rmdir(result.folder, { recursive: true });
+async function cleanup(result: Result) {
+	return await Sproc.promises.rmdir(result.folder, { recursive: true });
 }

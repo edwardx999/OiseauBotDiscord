@@ -3,7 +3,7 @@ import * as Discord from "discord.js";
 import * as StringSimilarity from "string-similarity";
 import { Hangman, cleanCharacters } from "./hangman";
 import { fetchComposerList, ComposerData, fetchComposerPageSize, fetchComposerCategories } from "./wiki_composer";
-import { executeSproc, cleanupSproc } from "./sproc";
+import * as Sproc from "./sproc";
 import { CircularBuffer } from "./circular_buffer";
 import { sep as pathSeparator } from "path";
 import * as Cache from "cacache";
@@ -561,7 +561,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 		return;
 	}
 	try {
-		const result = await executeSproc(attachments, args.map(arg => arg.toString()));
+		const result = await Sproc.execute(attachments, args.map(arg => arg.toString()));
 		const output = result.sprocOutput.trim();
 		if (output.length != 0) {
 			try {
@@ -591,7 +591,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 				}
 			}
 		}
-		cleanupSproc(result);
+		Sproc.cleanup(result).catch(catchHandler);
 		const lastRequestGuild = lastSprocRequests[message.guild.id] || (lastSprocRequests[message.guild.id] = {});
 		const lastRequestList = lastRequestGuild[message.author.id] || (lastRequestGuild[message.author.id] = createLastBuffer());
 		if (responses.length > 0) {
@@ -662,7 +662,7 @@ const execLily: CommandFunction = async (message, commandToken) => {
 				}
 			}
 			finally {
-				Lily.cleanup(result);
+				Lily.cleanup(result).catch(catchHandler);
 			}
 		}
 		catch (error) {
