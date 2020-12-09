@@ -33,8 +33,8 @@ const spawnTimeout = (command: string, args: string[], timeoutMs: number, option
 			child.stderr.on("data", data => stderr += data);
 			child.on("close", code => {
 				if (!timedOut) {
-					resolve({ stdout, stderr, exitCode: code });
 					clearTimeout(timeout);
+					resolve({ stdout, stderr, exitCode: code });
 				}
 				else {
 					resolve({ stdout, stderr });

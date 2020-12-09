@@ -28,45 +28,84 @@ function getDatesString(str?: string) {
 
 const wikiApiHeader = { "User-Agent": "Oiseaubot (https://github.com/edwardx999)" };
 
-async function fetchComposerPageSize(href?: string) {
-	try {
-		if (!href) {
-			return 0;
+/**
+ * Returns array of numbers where the ith number is the page size of the ith link. 
+ * If an entry is undefined, the page size was not retrieved successfully.
+ * Assumes pageLinks are unique.
+ * 
+ * @param pageLinks
+ */
+async function fetchComposerPageSize(pageLinks: string[]) {
+	const prefix = "/wiki/";
+	const pageSizes: number[] = [];
+	const pageTitles = pageLinks.filter((page, index) => {
+		if (page && page.startsWith(prefix)) {
+			return true;
 		}
-		const prefix = "/wiki/";
-		if (href.startsWith(prefix)) {
-			const reqUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&titles=${href.substring(prefix.length)}&prop=revisions&rvprop=size`;
-			const response = await fetch.default(reqUrl, {
-				method: "GET",
-				headers: wikiApiHeader
-			});
-			if (response.ok) {
-				const body = await response.textConverted();
-				try {
-					const parsed = JSON.parse(body);
-					const pages = parsed?.query?.pages;
-					for (const page in pages) {
-						const revisions = pages[page].revisions;
+		pageSizes[index] = 0;
+		return false;
+	}).map(page => {
+		return page.substr(prefix.length);
+	});
+	if (pageTitles.length === 0) {
+		return pageSizes;
+	}
+	const pageIndices: Record<string, number> = {};
+	{
+		let index = 0;
+		for (const title of pageTitles) {
+			pageIndices[title] = index;
+			++index;
+		}
+	}
+	const titleQuery = pageTitles.join("|");
+	const reqUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&titles=${titleQuery}&prop=revisions&rvprop=size`;
+	try {
+		const response = await fetch.default(reqUrl, {
+			method: "GET",
+			headers: wikiApiHeader
+		});
+		if (response.ok) {
+			const body = await response.textConverted();
+			const parsed = JSON.parse(body);
+			const query = parsed.query;
+			if (query) {
+				const pages = query.pages;
+				if (typeof pages === "object") {
+					const normalized = (() => {
+						const n = query.normalized;
+						const ret: Record<string, string> = {};
+						if (Array.isArray(n)) {
+							for (const entry of n) {
+								ret[entry.to] = entry.from;
+							}
+						}
+						return ret;
+					})();
+					for (const pageid in pages) {
+						const page = pages[pageid];
+						const revisions = page.revisions;
+						const title = page.title;
+						let index = pageIndices[title];
+						if (index === undefined) {
+							index = pageIndices[normalized[title]];
+							if (index === undefined) {
+								continue;
+							}
+						}
 						if (typeof revisions.length === "number" && revisions.length > 0) {
 							const size = revisions[0].size;
 							if (typeof size === "number") {
-								return size;
+								pageSizes[index] = size;
 							}
-							return 0;
 						}
-						break;
 					}
-					return 0;
-				} catch {
-					return 0;
 				}
 			}
-			return 0;
+
 		}
-		return 0;
-	} catch {
-		return 0;
-	}
+	} catch { }
+	return pageSizes;
 }
 
 const categoryPrefix = "Category:";

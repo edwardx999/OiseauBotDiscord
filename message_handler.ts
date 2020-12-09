@@ -2,7 +2,7 @@
 import * as Discord from "discord.js";
 import * as StringSimilarity from "string-similarity";
 import { Hangman, cleanCharacters } from "./hangman";
-import { fetchComposerList, ComposerData, fetchComposerPageSize, fetchComposerCategories } from "./wiki_composer";
+import * as Wiki from "./wiki_composer";
 import * as Sproc from "./sproc";
 import { CircularBuffer } from "./circular_buffer";
 import { sep as pathSeparator } from "path";
@@ -193,7 +193,7 @@ class ComposerHangman extends Hangman {
 			return this.dates;
 		}
 		if (this.categories === undefined) {
-			const list = await fetchComposerCategories(this.url);
+			const list = await Wiki.fetchComposerCategories(this.url);
 			this.categories = list.filter(name => name.indexOf(this.realName) < 0 && name.indexOf("Wikipedia") < 0);
 		}
 		if (this.categories.length === 0) {
@@ -274,32 +274,39 @@ const difficultyMap: Record<Difficulty, SampleSize> = {
 	hardest: 1,
 };
 
-async function getComposer(composerData: ComposerData[], difficult: Difficulty) {
+async function getComposer(composerData: Wiki.ComposerData[], difficult: Difficulty) {
 	const candidatesToConsider = difficultyMap[difficult];
-	const candidates: number[] = [];
+	const candidates: Wiki.ComposerData[] = [];
 	{
-		const queries: { promise: Promise<number>, composer: ComposerData }[] = [];
+		const queryTitles: string[] = [];
+		const queryComposers: Wiki.ComposerData[] = [];
 		{
-			const indicesFound = {};
+			const found = {};
 			for (let i = 0; i < candidatesToConsider; ++i) {
 				const index = Math.floor(Math.random() * composerData.length);
-				const composer = composerData[index];
-				candidates.push(index);
-				if (!composer.pageSize && !(indicesFound[index])) {
-					queries.push({ promise: fetchComposerPageSize(composer.pageUrl), composer: composer });
-					indicesFound[index] = true;
+				if (found[index] === undefined) {
+					found[index] = true;
+					const composer = composerData[index];
+					if (composer.pageSize === undefined) {
+						queryTitles.push(composer.pageUrl);
+						queryComposers.push(composer);
+					}
+					candidates.push(composer);
 				}
 			}
 		}
-		for (const query of queries) {
-			const pageSize = await query.promise;
-			query.composer.pageSize = pageSize;
-		}
+		const pageSizes = await Wiki.fetchComposerPageSize(queryTitles);
+		pageSizes.forEach((size, index) => {
+			if (size !== undefined) {
+				const composer = queryComposers[index];
+				composer.pageSize = size;
+			}
+		});
 	}
-	let best = composerData[candidates[0]];
-	for (let i = 1; i < candidatesToConsider; ++i) {
-		const comp = composerData[candidates[i]];
-		if (comp.pageSize > best.pageSize) {
+	let best = candidates[0];
+	for (let i = 1; i < candidates.length; ++i) {
+		const comp = composerData[i];
+		if (comp.pageSize > best.pageSize || best.pageSize === undefined) {
 			best = comp;
 		}
 	}
@@ -312,7 +319,7 @@ function startGame(message: Discord.Message, difficult: Difficulty) {
 		message.channel.send(`<@${authorId}>, you already have a game ongoing`).catch(catchHandler);
 		return;
 	}
-	fetchComposerList().then(async (composerData) => {
+	Wiki.fetchComposerList().then(async (composerData) => {
 		if (composerData && composerData.length > 0) {
 			const composer = await getComposer(composerData, difficult);
 			const game = hangmanGames[authorId] = new ComposerHangman(composer.name, composer.dates, 7, composer.pageUrl);
