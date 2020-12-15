@@ -38,25 +38,20 @@ const wikiApiHeader = { "User-Agent": "Oiseaubot (https://github.com/edwardx999)
 async function fetchComposerPageSize(pageLinks: string[]) {
 	const prefix = "/wiki/";
 	const pageSizes: number[] = [];
-	const pageTitles = pageLinks.filter((page, index) => {
-		if (page && page.startsWith(prefix)) {
-			return true;
+	const pageIndices: Record<string, number> = {};
+	const pageTitles: string[] = [];
+	pageLinks.forEach((link, index) => {
+		if (link && link.startsWith(prefix)) {
+			const title = link.substr(prefix.length);
+			pageTitles.push(title);
+			pageIndices[title] = index;
 		}
-		pageSizes[index] = 0;
-		return false;
-	}).map(page => {
-		return page.substr(prefix.length);
+		else {
+			pageSizes[index] = 0;
+		}
 	});
 	if (pageTitles.length === 0) {
 		return pageSizes;
-	}
-	const pageIndices: Record<string, number> = {};
-	{
-		let index = 0;
-		for (const title of pageTitles) {
-			pageIndices[title] = index;
-			++index;
-		}
 	}
 	const titleQuery = pageTitles.join("|");
 	const reqUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&titles=${titleQuery}&prop=revisions&rvprop=size`;
