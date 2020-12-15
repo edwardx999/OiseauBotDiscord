@@ -303,13 +303,12 @@ async function getComposer(composerData: Wiki.ComposerData[], difficult: Difficu
 			}
 		});
 	}
-	let best = candidates[0];
-	for (let i = 1; i < candidates.length; ++i) {
-		const comp = composerData[i];
-		if (comp.pageSize > best.pageSize || best.pageSize === undefined) {
-			best = comp;
+	const best = candidates.reduce((currentBest, candidate) => {
+		if (candidate.pageSize > currentBest.pageSize || currentBest.pageSize === undefined) {
+			return candidate;
 		}
-	}
+		return currentBest;
+	});
 	return best;
 }
 
