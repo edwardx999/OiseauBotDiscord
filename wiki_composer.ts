@@ -28,6 +28,7 @@ function getDatesString(str?: string) {
 
 const wikiApiHeader = { "User-Agent": "Oiseaubot (https://github.com/edwardx999)" };
 
+const wikiPrefix = "/wiki/";
 /**
  * Returns array of numbers where the ith number is the page size of the ith link. 
  * If an entry is undefined, the page size was not retrieved successfully.
@@ -36,13 +37,12 @@ const wikiApiHeader = { "User-Agent": "Oiseaubot (https://github.com/edwardx999)
  * @param pageLinks
  */
 async function fetchComposerPageSize(pageLinks: string[]) {
-	const prefix = "/wiki/";
 	const pageSizes: number[] = [];
 	const pageIndices: Record<string, number> = {};
 	const pageTitles: string[] = [];
 	pageLinks.forEach((link, index) => {
-		if (link && link.startsWith(prefix)) {
-			const title = link.substr(prefix.length);
+		if (link && link.startsWith(wikiPrefix)) {
+			const title = link.substr(wikiPrefix.length);
 			pageTitles.push(title);
 			pageIndices[title] = index;
 		}
@@ -110,9 +110,8 @@ async function fetchComposerCategories(href?: string) {
 		if (!href) {
 			return [];
 		}
-		const prefix = "/wiki/";
-		if (href.startsWith(prefix)) {
-			const reqUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&titles=${href.substring(prefix.length)}&prop=categories&cllimit=max`;
+		if (href.startsWith(wikiPrefix)) {
+			const reqUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&titles=${href.substring(wikiPrefix.length)}&prop=categories&cllimit=max`;
 			const response = await fetch.default(reqUrl, {
 				method: "GET",
 				headers: wikiApiHeader
@@ -206,6 +205,6 @@ const listRequest = makeCallOnce<ComposerData[]>(async (resolve, reject) => {
 	}
 });
 
-async function fetchComposerList() {
+function fetchComposerList() {
 	return listRequest();
 }
