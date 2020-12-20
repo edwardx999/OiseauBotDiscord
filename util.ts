@@ -53,7 +53,7 @@ function makeCallOnce<T>(callback: (resolve: (value?: T | PromiseLike<T>) => voi
 		if (result !== undefined) {
 			return result;
 		}
-		if (promise == null) {
+		if (promise === null) {
 			promise = new Promise<T>((resolve, reject) => callback(resolve, reject));
 		}
 		try {

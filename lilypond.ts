@@ -69,7 +69,6 @@ ${lilyCode}
 		if (result.exitCode != 0) {
 			throw result.stderr;
 		}
-		const filePaths: string[] = [];
 		const globExtensions: string[] = [];
 		if (formats[OutputFormats.IMAGES]) {
 			const sproc = await spawnTimeout("sproc", ["*.png", "-hp", "1", "tol:1", "bg:254", "-vp", "1", "tol:1", "bg:254"], timeoutMs, { cwd: directory });

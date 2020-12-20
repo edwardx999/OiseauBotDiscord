@@ -154,7 +154,8 @@ const listRequest = makeCallOnce<ComposerData[]>(async (resolve, reject) => {
 		const wikipediaData = await fetch.default("https://en.wikipedia.org/wiki/List_of_composers_by_name");
 		if (wikipediaData.ok) {
 			const body = await wikipediaData.textConverted();
-			const startTag = `<div class="div-col columns column-width`;
+			 // wikipedia xml format is invalid so this is needed to extract relevant sections
+			const startTag = `<div class="div-col`;
 			const endTag = `</div>`;
 			const composerList: ComposerData[] = [];
 			let blockStart = 0;
@@ -200,8 +201,9 @@ const listRequest = makeCallOnce<ComposerData[]>(async (resolve, reject) => {
 			}
 			resolve(composerList);
 		}
-	} catch {
-		reject();
+	} catch (err) {
+		console.error(err);
+		reject(err);
 	}
 });
 
