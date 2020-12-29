@@ -8,6 +8,7 @@ import { CircularBuffer } from "./circular_buffer";
 import { sep as pathSeparator } from "path";
 import * as Cache from "cacache";
 import * as Lily from "./lilypond";
+import { warn } from "console";
 
 type CommandFunction = (message: Discord.Message, commandToken: string, bot: Discord.Client) => any;
 
@@ -117,7 +118,6 @@ function findRoleId(roles: Discord.GuildMemberRoleManager, roleId: string) {
 const giveRole: CommandFunction = (message, commandToken) => {
 	const guild = message.guild;
 	const roles = guild.roles;
-	const text = message.content;
 	const desiredRoleName = pastFirstToken(message.content, commandToken).trim();
 	if (desiredRoleName.length == 0) {
 		return noRoleArgumentResponse(message);
@@ -525,7 +525,7 @@ const getLast = async (addTo: string[], message: Discord.Message, index: number)
 const lastRegex = /^\$LAST([-~]([0-9]+))?$/;
 
 const execSproc: CommandFunction = async (message, commandToken) => {
-	if (!hasChannelPermission(message, "ATTACH_FILES")) {
+	if (!hasChannelPermission(message, ["ATTACH_FILES", "SEND_MESSAGES"])) {
 		if (hasChannelPermission(message, "SEND_MESSAGES")) {
 			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
 		}
@@ -610,9 +610,15 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 	}
 };
 
+const outputTypes = [
+	[Lily.OutputFormats.IMAGES, "png", "\\layout"],
+	[Lily.OutputFormats.PDF, "pdf", "\\layout"],
+	[Lily.OutputFormats.MIDI, "mid", "\\midi"],
+	[Lily.OutputFormats.MP3, "mp3", "\\midi"]
+];
 const endCodeBlockRegex = /```([\s\S]*)```$/;
 const execLily: CommandFunction = async (message, commandToken) => {
-	if (!hasChannelPermission(message, "ATTACH_FILES")) {
+	if (!hasChannelPermission(message, ["ATTACH_FILES", "SEND_MESSAGES"])) {
 		if (hasChannelPermission(message, "SEND_MESSAGES")) {
 			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
 		}
@@ -649,19 +655,41 @@ const execLily: CommandFunction = async (message, commandToken) => {
 			})();
 			const result = await Lily.render(codeText, options);
 			try {
-				for (let i = 0; i < result.filePaths.length; ++i) {
-					try {
-						const attachment = new Discord.MessageAttachment(result.filePaths[i]);
-						await message.channel.send(attachment);
+				const warningMessage = (() => {
+					let message = "";
+					for (const [type, extension, required] of outputTypes) {
+						if (options[type]) {
+							const matchFound = result.filePaths.some(name => name.endsWith(extension));
+							if (!matchFound) {
+								message += `Warning: You requested ${type}, but none were found. Did you forget a ${required} block?\n`;
+							}
+						}
 					}
-					catch (error) {
-						if (error instanceof Discord.DiscordAPIError) {
-							try {
-								const attachmentTooLarge = 40005;
-								const errorMessage = error.code === attachmentTooLarge ? "(Result too large)" : `Error: ${error.message}`;
-								await message.channel.send(errorMessage);
-							} catch (ex) {
-								catchHandler(ex);
+					return message;
+				})();
+				if (warningMessage.length > 0 && result.filePaths.length == 0) {
+					message.channel.send(warningMessage).catch(catchHandler);
+				}
+				else {
+					for (let i = 0; i < result.filePaths.length; ++i) {
+						try {
+							const attachment = new Discord.MessageAttachment(result.filePaths[i]);
+							if (i == 0 && warningMessage.length > 0) {
+								await message.channel.send(warningMessage, attachment);
+							}
+							else {
+								await message.channel.send(attachment);
+							}
+						}
+						catch (error) {
+							if (error instanceof Discord.DiscordAPIError) {
+								try {
+									const attachmentTooLarge = 40005;
+									const errorMessage = error.code === attachmentTooLarge ? "(Result too large)" : `Error: ${error.message}`;
+									await message.channel.send(errorMessage);
+								} catch (ex) {
+									catchHandler(ex);
+								}
 							}
 						}
 					}
