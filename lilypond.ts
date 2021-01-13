@@ -37,6 +37,9 @@ interface Result {
 };
 
 const render = async (lilyCode: string, formats: Partial<Record<OutputFormats, any>>, timeoutMs?: number): Promise<Result> => {
+	if (lilyCode.indexOf("#") >= 0) {
+		throw "Illegal character #";
+	}
 	const versionNumber = await version();
 	const directory = await createTempDir();
 	timeoutMs = timeoutMs || 60000;
