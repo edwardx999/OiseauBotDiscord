@@ -3,9 +3,10 @@ export { Hangman, cleanCharacters }
 function cleanCharacters(input: string) {
 	return input
 		.normalize("NFD") // decompose diacritics
-		.replace(/[\u0300-\u036f]/g, "") // remove diacritic marks
-		.replace(/[\u{0080}-\u{FFFF}]/gu, "?") // replace other unicode with question marks
 		.toUpperCase()
+		.replace(/[\u0300-\u036f]/g, "") // remove diacritic marks
+		.replace(/\u0141/gu, "L")
+		.replace(/[\u{0080}-\u{FFFF}]/gu, "?") // replace other unicode with question marks
 		.replace("-", " ") // replace dash with space
 		.replace(/[^ ?A-Z]/g, ""); // remove everything other than spaces, question marks, and letters
 }
