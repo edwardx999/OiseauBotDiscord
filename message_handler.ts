@@ -8,7 +8,7 @@ import { CircularBuffer } from "./circular_buffer";
 import { sep as pathSeparator } from "path";
 import * as Cache from "cacache";
 import * as Lily from "./lilypond";
-import { warn } from "console";
+import * as Godbolt from "./godbolt";
 
 type CommandFunction = (message: Discord.Message, commandToken: string, bot: Discord.Client) => any;
 
@@ -816,6 +816,16 @@ const react: CommandFunction = async (message, commandToken, bot) => {
 	}
 };
 
+const execGodbolt: CommandFunction = async (message, commandToken) => {
+	const past = pastFirstToken(message.content, commandToken);
+	const codeBlock = endCodeBlockRegex.exec(past);
+	if (codeBlock) {
+		const codeText = codeBlock[1];
+		const resp = await Godbolt.cppExec(codeText);
+		message.channel.send("```" + resp + "```").catch(catchHandler);
+	}
+};
+
 const commands: Record<string, Record<string, Command>> = {
 	"": {
 		"!sproc": {
@@ -832,6 +842,11 @@ const commands: Record<string, Record<string, Command>> = {
 			command: execLily,
 			explanation: "Make a lilypond score/audio given lilypond code in code block. If no formats are specified, will give images. If requesting midi or mp3, you must specify a \\midi block. If requesting images or pdf, you must specify a \\layout block.",
 			usage: "!lily [images|pdf|midi|mp3] ... <code block with lilypond code>"
+		},
+		"!cpp": {
+			command: execGodbolt,
+			explanation: "todo",
+			usage: "todo"
 		}
 	},
 	"bot-spam": {
