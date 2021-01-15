@@ -258,7 +258,7 @@ function hangmanMessage(game: Hangman, message: string, player: Discord.User, pa
 function hangmanCompleteMessage(game: ComposerHangman) {
 	let ret = `The answer was ${game.answer} (${game.realName}) (${game.dates})`;
 	if (game.url) {
-		ret += ` (https://en.wikipedia.org${game.url})`;
+		ret += ` (<https://en.wikipedia.org${game.url}>)`;
 	}
 	return ret;
 }
