@@ -9,6 +9,8 @@ import { sep as pathSeparator } from "path";
 import * as Cache from "cacache";
 import * as Lily from "./lilypond";
 import * as Godbolt from "./godbolt";
+import * as fetch from "node-fetch";
+import { URL } from "url";
 
 type CommandFunction = (message: Discord.Message, commandToken: string, bot: Discord.Client) => any;
 
@@ -1060,19 +1062,47 @@ const createHandlers = async (bot: Discord.Client) => {
 				commandFound = findCommand(commands[channel.name]) || findCommand(commands[""]);
 			}
 			if (!commandFound) {
-				if (sendEmoji(message, bot)) {
+				if (channel.name !== "new-roles") {
+					sendEmoji(message, bot);
 				}
-				else if (channel.name === "bot-spam") {
-					if (message.content.length === 1 && message.content.match(/[A-Z]/i)) {
-						const game = hangmanGames[message.author.id];
-						if (game) {
-							const whatToGuess = message.content.toUpperCase();
-							hangmanGuess(message, game, whatToGuess);
+				switch (channel.name) {
+					case "bot-spam": {
+						if (message.content.length === 1 && message.content.match(/[A-Z]/i)) {
+							const game = hangmanGames[message.author.id];
+							if (game) {
+								const whatToGuess = message.content.toUpperCase();
+								hangmanGuess(message, game, whatToGuess);
+							}
 						}
-					}
-				}
-				else if (channel.name === "new-roles") {
-					deleteExtraneous(message);
+					} break;
+					case "new-roles": {
+						deleteExtraneous(message);
+					} break;
+					case "guess-the-score": {
+						if (message.channel.type == "text") {
+							const attachments = message.attachments;
+							if (attachments.size > 0) {
+								const attached = attachments.first();
+								const url = attached.url;
+								fetch.default(url, { method: "HEAD" }).then((result) => {
+									const type = result.headers.get("content-type");
+									switch (type) {
+										case "image/png":
+										case "image/jpeg":
+										case "image/webp":
+										case "image/gif":
+											break;
+										default:
+											return;
+									}
+									(message.channel as Discord.TextChannel).messages.fetchPinned().then(pinned => {
+										pinned.forEach(value => value.unpin());
+										message.pin().catch(catchHandler);
+									}, catchHandler);
+							}, catchHandler);
+							}
+						}
+					} break;
 				}
 			}
 		}
