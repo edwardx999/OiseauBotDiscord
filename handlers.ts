@@ -1039,7 +1039,7 @@ const createHandlers = async (bot: Discord.Client) => {
 		catchHandler(err);
 	}
 	const messageHandler = (message: Discord.Message) => {
-		if (message.author.id === message.guild.me.id) {
+		if (message.author.id === bot.user.id) {
 			return;
 		}
 		if (message.channel.type === "text" && hasChannelPermission(message, "SEND_MESSAGES")) {
@@ -1096,7 +1096,7 @@ const createHandlers = async (bot: Discord.Client) => {
 											return;
 									}
 									(message.channel as Discord.TextChannel).messages.fetchPinned().then(pinned => {
-										pinned.forEach(value => value.unpin());
+										pinned.forEach(value => value.unpin().catch(catchHandler));
 										message.pin().catch(catchHandler);
 									}, catchHandler);
 							}, catchHandler);
