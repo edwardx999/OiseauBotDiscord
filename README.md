@@ -6,7 +6,7 @@ Discord Bot for Score Video Discord Server https://discord.com/invite/938w8ZK
 
 `npm install`
 
-Also get `sproc_lim.exe` under Releases, and wsl.
+Also get `sproc_lim.exe` under Releases, and wsl. On wsl, you will need timidity and ffmpeg.
 
 ## Startup
 
