@@ -631,7 +631,8 @@ const outputTypes = [
 	[Lily.OutputFormats.MP3, "mp3", "\\midi"]
 ];
 const endCodeBlockRegex = /```([\s\S]*)```$/;
-const execLily: CommandFunction = async (message, commandToken) => {
+
+const execLilyHelp = async (message: Discord.Message, commandToken: string, codeWrapper?: (code: string) => string) => {
 	if (!hasChannelPermission(message, ["ATTACH_FILES", "SEND_MESSAGES"])) {
 		if (hasChannelPermission(message, "SEND_MESSAGES")) {
 			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
@@ -667,7 +668,7 @@ const execLily: CommandFunction = async (message, commandToken) => {
 				}
 				return ret;
 			})();
-			const result = await Lily.render(codeText, options);
+			const result = await Lily.render(codeWrapper ? codeWrapper(codeText) : codeText, options);
 			try {
 				const warningMessage = (() => {
 					let message = "";
@@ -725,6 +726,16 @@ const execLily: CommandFunction = async (message, commandToken) => {
 			}
 		}
 	}
+};
+
+const execLily: CommandFunction = (message, commandToken) => {
+	return execLilyHelp(message, commandToken);
+};
+
+const execLilyBasic: CommandFunction = (message, commandToken) => {
+	return execLilyHelp(message, commandToken, (code) => {
+		return `\\score { << \\new Staff { ${code} } >> \\layout { } \\midi { }}`;
+	});
 };
 
 const noRolesMessage = "I can give you no roles";
@@ -915,6 +926,11 @@ const commands: Record<string, Record<string, Command>> = {
 			explanation: "Make a lilypond score/audio given lilypond code in code block. If no formats are specified, will give images. If requesting midi or mp3, you must specify a \\midi block. If requesting images or pdf, you must specify a \\layout block.",
 			usage: "$COMMAND_TOKEN$ [images|pdf|midi|mp3] ... <code block with lilypond code>"
 		},
+		"lily-basic": {
+			command: execLilyBasic,
+			explanation: "Make a basic melody using lilypond syntax. If no formats are specified, will give images.",
+			usage: "$COMMAND_TOKEN$ [images|pdf|midi|mp3] ... <code block with lilypond melody>"
+		},
 		"cpp": {
 			command: execGodbolt,
 			explanation: "todo",
@@ -1099,7 +1115,7 @@ const createHandlers = async (bot: Discord.Client) => {
 										pinned.forEach(value => value.unpin().catch(catchHandler));
 										message.pin().catch(catchHandler);
 									}, catchHandler);
-							}, catchHandler);
+								}, catchHandler);
 							}
 						}
 					} break;
