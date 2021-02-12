@@ -1149,7 +1149,7 @@ const createHandlers = async (bot: Discord.Client) => {
 				delete toBeDeleted[deleted.id];
 			}
 		}
-		if (deleted.author.id === bot.user.id) {
+		if (deleted.author.id === bot.user.id || deleted.system) {
 			return;
 		}
 		try {
