@@ -10,7 +10,6 @@ import * as Cache from "cacache";
 import * as Lily from "./lilypond";
 import * as Godbolt from "./godbolt";
 import * as fetch from "node-fetch";
-import { URL } from "url";
 
 type CommandFunction = (message: Discord.Message, commandToken: string, bot: Discord.Client) => any;
 
@@ -1047,6 +1046,67 @@ const toHms = (millis: number) => {
 	return `${seconds}.${(millis % 1000).toString().padStart(3, "0")}s`;
 };
 
+const guessScoreTurns: Record<GuildId, CircularBuffer<UserId>> = {};
+const guessScoreSize = 10;
+const getTurns = async (message: Discord.Message) => {
+	const guildId = message.guild.id;
+	{
+		const turns = guessScoreTurns[guildId];
+		if (turns !== undefined) {
+			return turns;
+		}
+	}
+	try {
+		const storageKey = `guessScoreTurns+${guildId}`;
+		const turnsBuffer = await Cache.get(storagePath, storageKey);
+		return new CircularBuffer<UserId>(guessScoreSize, JSON.parse(turnsBuffer.data.toString()) as UserId[]);
+	} catch { /*ignore*/ }
+	guessScoreTurns[guildId] = new CircularBuffer<UserId>(guessScoreSize);
+	return guessScoreTurns[guildId];
+};
+
+const guessScoreHandler = async (message: Discord.Message) => {
+	if (message.channel.type == "text") {
+		const attachments = message.attachments;
+		try {
+			if (attachments.size > 0) {
+				const attached = attachments.first();
+				const url = attached.url;
+				const result = await fetch.default(url, { method: "HEAD" });
+				const type = result.headers.get("content-type");
+				switch (type) {
+					case "image/png":
+					case "image/jpeg":
+					case "image/webp":
+						break;
+					default:
+						return;
+				}
+				(message.channel as Discord.TextChannel).messages.fetchPinned().then(pinned => {
+					pinned.forEach(value => value.unpin().catch(catchHandler));
+					message.pin().catch(catchHandler);
+				}, catchHandler);
+				const turns = await getTurns(message);
+				turns.push(message.author.id);
+				const turnsArray = turns.toArray();
+				const userTurnCount = turnsArray.reduce((acc, userId) => {
+					if (userId === message.author.id) {
+						return acc + 1;
+					}
+					return acc;
+				}, 0);
+				if (userTurnCount > 2) {
+					message.channel.send(`${message.author} You've gone ${userTurnCount} times within the last ${guessScoreSize} rounds. Why not let someone else go?`).catch(catchHandler);
+				}
+				const storageKey = `guessScoreTurns+${message.guild.id}`;
+				Cache.put(storagePath, storageKey, JSON.stringify(turnsArray)).catch(catchHandler);
+			}
+		} catch (err) {
+			catchHandler(err);
+		}
+	}
+};
+
 const createHandlers = async (bot: Discord.Client) => {
 	try {
 		const prefixData = await Cache.get(storagePath, prefixesCacheKey);
@@ -1095,29 +1155,7 @@ const createHandlers = async (bot: Discord.Client) => {
 						deleteExtraneous(message);
 					} break;
 					case "guess-the-score": {
-						if (message.channel.type == "text") {
-							const attachments = message.attachments;
-							if (attachments.size > 0) {
-								const attached = attachments.first();
-								const url = attached.url;
-								fetch.default(url, { method: "HEAD" }).then((result) => {
-									const type = result.headers.get("content-type");
-									switch (type) {
-										case "image/png":
-										case "image/jpeg":
-										case "image/webp":
-										case "image/gif":
-											break;
-										default:
-											return;
-									}
-									(message.channel as Discord.TextChannel).messages.fetchPinned().then(pinned => {
-										pinned.forEach(value => value.unpin().catch(catchHandler));
-										message.pin().catch(catchHandler);
-									}, catchHandler);
-								}, catchHandler);
-							}
-						}
+						guessScoreHandler(message);
 					} break;
 				}
 			}
