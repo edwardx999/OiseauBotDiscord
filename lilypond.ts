@@ -7,7 +7,6 @@ import { clearTimeout } from "timers";
 
 export { render, cleanup, OutputFormats };
 
-const inputFileName = "music.ly";
 const versionRegex = /GNU LilyPond ([0-9]+\.[0-9]+\.[0-9]+)/
 const version = makeCallOnce<string>(async (resolve, reject) => {
 	try {
@@ -44,7 +43,7 @@ const render = async (lilyCode: string, formats: Partial<Record<OutputFormats, a
 	const directory = await createTempDir();
 	timeoutMs = timeoutMs || 60000;
 	try {
-		const lilyFile = await fs.promises.writeFile(`${directory}${pathSeparator}${inputFileName}`,
+		const lilyData =
 			`\\version "${versionNumber}"
 \\header {
 	tagline = ""
@@ -52,7 +51,7 @@ const render = async (lilyCode: string, formats: Partial<Record<OutputFormats, a
 	composer = ""
 }
 ${lilyCode}
-`);
+`;
 		const args = (() => {
 			const ret = ["-dsafe", "--loglevel=ERROR"];
 			if (formats[OutputFormats.IMAGES]) {
@@ -62,10 +61,14 @@ ${lilyCode}
 			if (formats[OutputFormats.PDF]) {
 				ret.push("-fpdf");
 			}
-			ret.push(inputFileName);
+			ret.push("-omusic")
+			ret.push("-");
 			return ret;
 		})();
-		const result = await spawnTimeout("lilypond", args, timeoutMs, { cwd: directory });
+		const result = await spawnTimeout("lilypond", args, timeoutMs, { cwd: directory }, (child) => {
+			child.stdin.write(lilyData);
+			child.stdin.end();
+		});
 		if (result.exitCode === undefined) {
 			throw "Timeout";
 		}

@@ -18,7 +18,7 @@ interface SpawnResult {
 	exitCode?: number; // if not present, timed out
 }
 
-const spawnTimeout = (command: string, args: string[], timeoutMs: number, options?: cp.SpawnOptions) => {
+const spawnTimeout = (command: string, args: string[], timeoutMs: number, options?: cp.SpawnOptions, childHandler?: (child: cp.ChildProcessWithoutNullStreams) => any) => {
 	return new Promise<SpawnResult>((resolve, reject) => {
 		try {
 			const child = cp.spawn(command, args, options);
@@ -40,6 +40,9 @@ const spawnTimeout = (command: string, args: string[], timeoutMs: number, option
 					resolve({ stdout, stderr });
 				}
 			});
+			if (childHandler) {
+				childHandler(child);
+			}
 		} catch (err) {
 			reject(err);
 		}
