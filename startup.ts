@@ -14,15 +14,16 @@ const spawnBot = () => {
 spawnBot();
 
 const responder = (() => {
-	let startupTime = Date.now();
-	const startupMinWait = 1000;
+	let killer: NodeJS.Timeout = null;
+	const killDelay = 1000;
 	return () => {
-		const now = Date.now();
-		if (now - startupTime > startupMinWait) {
-			startupTime = now;
-			console.log("File change detected")
-			child.kill();
+		if (killer) {
+			clearTimeout(killer);
 		}
+		killer = setTimeout(() => {
+			console.log("File change detected");
+			child.kill();
+		}, killDelay);
 	};
 })();
 
