@@ -898,6 +898,91 @@ const resetPrefix: CommandFunction = (message, commandToken) => {
 	}
 };
 
+const guessScoreTurns: Record<GuildId, CircularBuffer<UserId>> = {};
+const guessScoreSize = 10;
+const getTurns = async (message: Discord.Message) => {
+	const guildId = message.guild.id;
+	{
+		const turns = guessScoreTurns[guildId];
+		if (turns !== undefined) {
+			return turns;
+		}
+	}
+	try {
+		const storageKey = `guessScoreTurns+${guildId}`;
+		const turnsBuffer = await Cache.get(storagePath, storageKey);
+		return new CircularBuffer<UserId>(guessScoreSize, JSON.parse(turnsBuffer.data.toString()) as UserId[]);
+	} catch { /*ignore*/ }
+	guessScoreTurns[guildId] = new CircularBuffer<UserId>(guessScoreSize);
+	return guessScoreTurns[guildId];
+};
+
+const guessScoreHandler = async (message: Discord.Message) => {
+	if (message.channel.type == "text") {
+		const attachments = message.attachments;
+		try {
+			if (attachments.size > 0) {
+				const attached = attachments.first();
+				const url = attached.url;
+				const result = await fetch.default(url, { method: "HEAD" });
+				const type = result.headers.get("content-type");
+				switch (type) {
+					case "image/png":
+					case "image/jpeg":
+					case "image/webp":
+						break;
+					default:
+						return;
+				}
+				(message.channel as Discord.TextChannel).messages.fetchPinned().then(pinned => {
+					pinned.forEach(value => value.unpin().catch(catchHandler));
+					message.pin().catch(catchHandler);
+				}, catchHandler);
+				const turns = await getTurns(message);
+				turns.push(message.author.id);
+				const turnsArray = turns.toArray();
+				const userTurnCount = turnsArray.reduce((acc, userId) => {
+					if (userId === message.author.id) {
+						return acc + 1;
+					}
+					return acc;
+				}, 0);
+				if (userTurnCount > 3) {
+					message.channel.send(`${message.author} You've gone ${userTurnCount} times within the last ${guessScoreSize} rounds. Why not let someone else go?`).catch(catchHandler);
+				}
+				const storageKey = `guessScoreTurns+${message.guild.id}`;
+				Cache.put(storagePath, storageKey, JSON.stringify(turnsArray)).catch(catchHandler);
+			}
+		} catch (err) {
+			catchHandler(err);
+		}
+	}
+};
+
+const unpinGuess: CommandFunction = async (message, commandToken) => {
+	try {
+		const turns = (await getTurns(message)).toArray();
+		(message.channel as Discord.TextChannel).messages.fetchPinned().then(pinned => {
+			let changed = false;
+			pinned.forEach(pinnedMessage => {
+				pinnedMessage.unpin().catch(catchHandler);
+				for (let i = turns.length; i-- > 0;) {
+					if (turns[i] == pinnedMessage.author.id) {
+						turns.splice(i, 1);
+						changed = true;
+						break;
+					}
+				}
+			});
+			if (changed) {
+				guessScoreTurns[message.guild.id] = new CircularBuffer<UserId>(guessScoreSize, turns);
+			}
+		}, catchHandler);
+	} catch (err) {
+		catchHandler(err);
+	}
+};
+
 const commands: Record<string, Record<string, Command>> = {
 	"": {
 		"sproc": {
@@ -947,6 +1032,9 @@ const commands: Record<string, Record<string, Command>> = {
 		"giveme": { command: giveRole, explanation: "Gives you a role", usage: "$COMMAND_TOKEN$ <role>" },
 		"takeaway": { command: takeRole, explanation: "Takes a role from you", usage: "$COMMAND_TOKEN$ <role>" },
 		"roles": { command: listRoles, explanation: "List the roles I can give", usage: "$COMMAND_TOKEN$" }
+	},
+	"guess-the-score": {
+		"unpin": { command: unpinGuess, explanation: "Unpins the last score to guess", usage: "$COMMAND_TOKEN$" }
 	}
 };
 
@@ -1046,67 +1134,6 @@ const toHms = (millis: number) => {
 	return `${seconds}.${(millis % 1000).toString().padStart(3, "0")}s`;
 };
 
-const guessScoreTurns: Record<GuildId, CircularBuffer<UserId>> = {};
-const guessScoreSize = 10;
-const getTurns = async (message: Discord.Message) => {
-	const guildId = message.guild.id;
-	{
-		const turns = guessScoreTurns[guildId];
-		if (turns !== undefined) {
-			return turns;
-		}
-	}
-	try {
-		const storageKey = `guessScoreTurns+${guildId}`;
-		const turnsBuffer = await Cache.get(storagePath, storageKey);
-		return new CircularBuffer<UserId>(guessScoreSize, JSON.parse(turnsBuffer.data.toString()) as UserId[]);
-	} catch { /*ignore*/ }
-	guessScoreTurns[guildId] = new CircularBuffer<UserId>(guessScoreSize);
-	return guessScoreTurns[guildId];
-};
-
-const guessScoreHandler = async (message: Discord.Message) => {
-	if (message.channel.type == "text") {
-		const attachments = message.attachments;
-		try {
-			if (attachments.size > 0) {
-				const attached = attachments.first();
-				const url = attached.url;
-				const result = await fetch.default(url, { method: "HEAD" });
-				const type = result.headers.get("content-type");
-				switch (type) {
-					case "image/png":
-					case "image/jpeg":
-					case "image/webp":
-						break;
-					default:
-						return;
-				}
-				(message.channel as Discord.TextChannel).messages.fetchPinned().then(pinned => {
-					pinned.forEach(value => value.unpin().catch(catchHandler));
-					message.pin().catch(catchHandler);
-				}, catchHandler);
-				const turns = await getTurns(message);
-				turns.push(message.author.id);
-				const turnsArray = turns.toArray();
-				const userTurnCount = turnsArray.reduce((acc, userId) => {
-					if (userId === message.author.id) {
-						return acc + 1;
-					}
-					return acc;
-				}, 0);
-				if (userTurnCount > 2) {
-					message.channel.send(`${message.author} You've gone ${userTurnCount} times within the last ${guessScoreSize} rounds. Why not let someone else go?`).catch(catchHandler);
-				}
-				const storageKey = `guessScoreTurns+${message.guild.id}`;
-				Cache.put(storagePath, storageKey, JSON.stringify(turnsArray)).catch(catchHandler);
-			}
-		} catch (err) {
-			catchHandler(err);
-		}
-	}
-};
-
 const createHandlers = async (bot: Discord.Client) => {
 	try {
 		const prefixData = await Cache.get(storagePath, prefixesCacheKey);
@@ -1173,7 +1200,7 @@ const createHandlers = async (bot: Discord.Client) => {
 						return [reffedMessage.author];
 					}
 				}
-			} catch { }
+			} catch (err) { catchHandler(err); }
 			return [];
 		}
 		return undefined;
