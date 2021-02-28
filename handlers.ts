@@ -902,7 +902,7 @@ const resetPrefix: CommandFunction = (message, commandToken) => {
 };
 
 const guessScoreTurns: Record<GuildId, CircularBuffer<UserId>> = {};
-const guessScoreSize = 10;
+const guessScoreSize = 5;
 const getTurns = async (message: Discord.Message) => {
 	const guildId = message.guild.id;
 	{
@@ -950,7 +950,7 @@ const guessScoreHandler = async (message: Discord.Message) => {
 					}
 					return acc;
 				}, 0);
-				if (userTurnCount > 3) {
+				if (userTurnCount > 2) {
 					message.channel.send(`${message.author} You've gone ${userTurnCount} times within the last ${guessScoreSize} rounds. Why not let someone else go?`).catch(catchHandler);
 				}
 				const storageKey = `guessScoreTurns+${message.guild.id}`;

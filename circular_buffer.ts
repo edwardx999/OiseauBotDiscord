@@ -7,25 +7,23 @@ class CircularBuffer<T>
 	private head: number;
 
 	constructor(capacity: number, initial?: T[]) {
-		this.data = Array.from({ length: capacity });
 		if (initial === undefined) {
+			this.data = Array.from({ length: capacity });
 			this.full = false;
 			this.head = 0;
-		} else {
-			if (initial.length > capacity) {
-				for (let start = initial.length - capacity, i = 0; i < capacity; ++start, ++i) {
-					this.data[i] = initial[i];
-				}
-				this.head = 0;
-				this.full = true;
+		}
+		else if (initial.length >= capacity) {
+			this.data = initial.slice(initial.length - capacity);
+			this.head = 0;
+			this.full = true;
+		}
+		else {
+			this.data = Array.from({ length: capacity });
+			for (let i = 0; i < initial.length; ++i) {
+				this.data[i] = initial[i];
 			}
-			else {
-				for (let i = 0; i < capacity; ++i) {
-					this.data[i] = initial[i];
-					this.head = initial.length;
-					this.full = false;
-				}
-			}
+			this.head = initial.length;
+			this.full = false;
 		}
 	}
 
