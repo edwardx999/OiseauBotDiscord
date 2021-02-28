@@ -725,6 +725,9 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 			}
 		}
 	}
+	else {
+		message.channel.send("No lilypond code found. Please put lilypond code inside \\`\\`\\`").catch(catchHandler);
+	}
 };
 
 const execLily: CommandFunction = (message, commandToken) => {
