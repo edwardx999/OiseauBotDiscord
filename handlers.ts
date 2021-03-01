@@ -629,7 +629,8 @@ const outputTypes = [
 	[Lily.OutputFormats.MIDI, "mid", "\\midi"],
 	[Lily.OutputFormats.MP3, "mp3", "\\midi"]
 ];
-const endCodeBlockRegex = /```([\s\S]*)```$/;
+const endCodeBlockRegex = /```([\s\S]*)```\s*$/;
+const endCodeBlockRegex2 = /`([\s\S]*)`\s*$/;
 
 const execLilyHelp = async (message: Discord.Message, commandToken: string, codeWrapper?: (code: string) => string) => {
 	if (!hasChannelPermission(message, ["ATTACH_FILES", "SEND_MESSAGES"])) {
@@ -639,7 +640,7 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 		return;
 	}
 	const past = pastFirstToken(message.content, commandToken);
-	const codeBlock = endCodeBlockRegex.exec(past);
+	const codeBlock = endCodeBlockRegex.exec(past) || endCodeBlockRegex2.exec(past);
 	if (codeBlock) {
 		const codeText = codeBlock[1];
 		const args = tokenize(past.substr(0, codeBlock.index));
