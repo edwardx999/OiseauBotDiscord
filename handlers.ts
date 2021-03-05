@@ -798,7 +798,7 @@ const parseMessageLink = (link: string): MessageMatch => {
 	return null;
 };
 
-const react: CommandFunction = async (message, commandToken, bot) => {
+const reactParser = (message: Discord.Message, commandToken: string, bot: Discord.Client) => {
 	const args = quoteTokenize(pastFirstToken(message.content, commandToken));
 	if (args.length >= 2) {
 		const emojis: Discord.EmojiIdentifierResolvable[] = [];
@@ -824,6 +824,15 @@ const react: CommandFunction = async (message, commandToken, bot) => {
 				}
 			}
 		}
+		return { emojis, messages };
+	}
+	return null;
+}
+const react: CommandFunction = async (message, commandToken, bot) => {
+	const parsed = reactParser(message, commandToken, bot);
+	if (parsed) {
+		const emojis = parsed.emojis;
+		const messages = parsed.messages;
 		for (const emoji of emojis) {
 			for (const messageInfo of messages) {
 				const guild = bot.guilds.cache.get(messageInfo.guild);
@@ -836,6 +845,33 @@ const react: CommandFunction = async (message, commandToken, bot) => {
 						} catch (err) {
 							catchHandler(err);
 						}
+					}
+				}
+			}
+		}
+	}
+};
+
+const unreact: CommandFunction = async (message, commandToken, bot) => {
+	const parsed = reactParser(message, commandToken, bot);
+	if (parsed) {
+		const emojis = parsed.emojis;
+		const messages = parsed.messages;
+		for (const messageInfo of messages) {
+			const guild = bot.guilds.cache.get(messageInfo.guild);
+			if (guild) {
+				const channel = guild.channels.cache.get(messageInfo.channel);
+				if (channel && channel.type === "text") {
+					try {
+						const message = await (channel as Discord.TextChannel).messages.fetch(messageInfo.message);
+						for (const emoji of emojis) {
+							const reaction = message.reactions.cache.get(emoji.toString());
+							if (reaction && reaction.me) {
+								reaction.users.remove(bot.user).catch(catchHandler);
+							}
+						}
+					} catch (err) {
+						catchHandler(err);
 					}
 				}
 			}
@@ -997,6 +1033,11 @@ const commands: Record<string, Record<string, Command>> = {
 		"react": {
 			command: react,
 			explanation: "Reacts to given messages with given emojis",
+			usage: "$COMMAND_TOKEN$ [emoji | message_link] ..."
+		},
+		"unreact": {
+			command: unreact,
+			explanation: "Unreacts from given messages with given emojis",
 			usage: "$COMMAND_TOKEN$ [emoji | message_link] ..."
 		},
 		"oiseau-prefix": {
