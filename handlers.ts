@@ -130,7 +130,45 @@ function findRoleId(roles: Discord.GuildMemberRoleManager, roleId: string) {
 	return roles.cache.get(roleId);
 }
 
-const giveRole: CommandFunction = (message, commandToken) => {
+type RoleId = string;
+const roleBlacklists: Record<GuildId, Record<RoleId, any>> = {};
+
+const guildBlacklistName = (guildId: GuildId) => `blacklist+${guildId}`;
+
+const initBlacklist = async (guildId: GuildId) => {
+	const loadedBlacklist = roleBlacklists[guildId];
+	if (loadedBlacklist) {
+		return loadedBlacklist;
+	}
+	try {
+		const blacklist = JSON.parse((await Cache.get(storagePath, guildBlacklistName(guildId))).data.toString()) as Record<RoleId, any>;
+		if (typeof blacklist === "object") {
+			roleBlacklists[guildId] = blacklist;
+			return blacklist;
+		}
+	} catch (err) {
+		catchHandler(err);
+	}
+	return (roleBlacklists[guildId] = {});
+};
+
+const addToBlacklist = async (guildId: GuildId, roleId: RoleId) => {
+	const blacklist = await initBlacklist(guildId);
+	if (!blacklist[roleId]) {
+		blacklist[roleId] = true;
+		Cache.put(storagePath, guildBlacklistName(guildId), JSON.stringify(blacklist)).catch(catchHandler);
+	}
+};
+
+const removeFromBlacklist = async (guildId: GuildId, roleId: RoleId) => {
+	const blacklist = await initBlacklist(guildId);
+	if (blacklist[roleId]) {
+		delete blacklist[roleId];
+		Cache.put(storagePath, guildBlacklistName(guildId), JSON.stringify(blacklist)).catch(catchHandler);
+	}
+};
+
+const giveRole: CommandFunction = async (message, commandToken) => {
 	const guild = message.guild;
 	const roles = guild.roles;
 	const desiredRoleName = pastFirstToken(message.content, commandToken).trim();
@@ -144,13 +182,19 @@ const giveRole: CommandFunction = (message, commandToken) => {
 			message.channel.send(`<@${message.author.id}>, you already have role ${role.name}`).catch(catchHandler);
 		}
 		else {
-			userRoles.add(role).then(
-				() => {
-					message.channel.send(`<@${message.author.id}>, you have been given role ${role.name}`).catch(catchHandler);
-				},
-				() => {
-					message.channel.send(`<@${message.author.id}>, I cannot give you role ${role.name}`).catch(catchHandler);
-				});
+			const forbiddenCallback = () => {
+				message.channel.send(`<@${message.author.id}>, I cannot give you role ${role.name}`).catch(catchHandler);
+			};
+			const blacklist = await initBlacklist(guild.id);
+			if (!(blacklist[role.id])) {
+				userRoles.add(role).then(
+					() => {
+						message.channel.send(`<@${message.author.id}>, you have been given role ${role.name}`).catch(catchHandler);
+					}, forbiddenCallback);
+			}
+			else {
+				forbiddenCallback();
+			}
 		}
 	}
 	else {
@@ -184,6 +228,40 @@ const takeRole: CommandFunction = (message, commandToken) => {
 	else {
 		noRoleExistReponse(message, desiredRoleName);
 	}
+};
+
+const blacklistHandler = (message: Discord.Message, commandToken: string, doWithRole: (role: Discord.Role) => any) => {
+	if (message.member.hasPermission("ADMINISTRATOR")) {
+		const guild = message.guild;
+		const roles = guild.roles;
+		const desiredRoleName = pastFirstToken(message.content, commandToken).trim();
+		if (desiredRoleName.length == 0) {
+			return noRoleArgumentResponse(message);
+		}
+		const role = findRole(roles, desiredRoleName);
+		if (role) {
+			doWithRole(role);
+		}
+		else {
+			noRoleExistReponse(message, desiredRoleName);
+		}
+	}
+};
+
+const givemeUnblacklist: CommandFunction = (message, commandToken) => {
+	blacklistHandler(message, commandToken, (role) => {
+		removeFromBlacklist(message.guild.id, role.id).then(
+			() => { message.channel.send(`Role ${role.name} has been unblacklisted`).catch(catchHandler); },
+			catchHandler);
+	});
+};
+
+const givemeBlacklist: CommandFunction = (message, commandToken) => {
+	blacklistHandler(message, commandToken, (role) => {
+		addToBlacklist(message.guild.id, role.id).then(
+			() => { message.channel.send(`Role ${role.name} has been blacklisted`).catch(catchHandler); },
+			catchHandler);
+	});
 };
 
 class ComposerHangman extends Hangman {
@@ -743,7 +821,7 @@ const execLilyBasic: CommandFunction = (message, commandToken) => {
 
 const noRolesMessage = "I can give you no roles";
 
-const listRoles: CommandFunction = (message) => {
+const listRoles: CommandFunction = async (message) => {
 	if (!hasGuildPermission(message, "MANAGE_ROLES")) {
 		message.channel.send(noRolesMessage).catch(catchHandler);
 		return;
@@ -751,10 +829,11 @@ const listRoles: CommandFunction = (message) => {
 	const guild = message.guild;
 	const roles = guild.roles;
 	const botRole = guild.me.roles.highest;
+	const blacklist = await initBlacklist(guild.id);
 	const list = roles.cache.array()
 		.sort((role1, role2) => role2.position - role1.position)
 		.map((role) => {
-			if (role.position < botRole.position && role.name != "@everyone") {
+			if (role.position < botRole.position && role.name != "@everyone" && role.id && !blacklist[role.id]) {
 				return role.name;
 			}
 			return null;
@@ -915,7 +994,7 @@ const helpMessage = (respondTo: Discord.Message) => {
 
 const prefixesCacheKey = "prefixes";
 const setPrefix: CommandFunction = (message, commandToken) => {
-	if (message.member.hasPermission("ADMINISTRATOR",)) {
+	if (message.member.hasPermission("ADMINISTRATOR")) {
 		const args = pastFirstToken(message.content, commandToken).trim();
 		if (args.indexOf(" ") >= 0) {
 			message.channel.send("Prefix cannot have spaces.").catch(catchHandler);
@@ -1064,7 +1143,17 @@ const commands: Record<string, Record<string, Command>> = {
 			command: execGodbolt,
 			explanation: "todo",
 			usage: "todo"
-		}
+		},
+		"giveme-blacklist": {
+			command: givemeBlacklist,
+			explanation: "Prevents a user from using giveme for a role (requires admin)",
+			usage: "$COMMAND_TOKEN$ role"
+		},
+		"giveme-unblacklist": {
+			command: givemeUnblacklist,
+			explanation: "Prevents a user from using giveme for a role (requires admin)",
+			usage: "$COMMAND_TOKEN$ role"
+		},
 	},
 	"bot-spam": {
 		"hi": { command: sayHi, explanation: "Says hello", usage: "$COMMAND_TOKEN$" },
