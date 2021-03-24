@@ -1231,17 +1231,18 @@ const sendEmoji = (message: Discord.Message, bot: Discord.Client) => {
 
 type Deletable = Discord.Message | Discord.PartialMessage;
 const findAtted = (message: Deletable) => {
-	const pingRegex = /<@![0-9]+>/g;
+	const pingRegex = /<@([!&])[0-9]+>/g;
 	const matches = message.content.match(pingRegex);
 	if (!matches || matches.length === 0) {
 		return undefined;
 	}
-	const ret: Discord.User[] = [];
+	const ret: (Discord.User | Discord.Role)[] = [];
 	for (const match of matches) {
+		const isRolePing = (match[2] == '&');
 		const id = match.substr(3, match.length - 4);
-		const author = message.guild.members.cache.get(id).user;
-		if (author) {
-			ret.push(author);
+		const pinged = isRolePing ? message.guild.roles.cache.get(id) : message.guild.members.cache.get(id).user;
+		if (pinged) {
+			ret.push(pinged);
 		}
 	}
 	return ret;
