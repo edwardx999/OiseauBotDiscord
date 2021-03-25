@@ -645,7 +645,12 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 				}
 			}
 			else {
-				attachments.push(arg);
+				if (arg.startsWith("<") && arg.endsWith(">")) {
+					attachments.push(arg.substring(1, arg.length - 1));
+				}
+				else {
+					attachments.push(arg);
+				}
 			}
 		}
 		if (!foundCommands) {
@@ -658,7 +663,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 		return;
 	}
 	try {
-		const result = await Sproc.execute(attachments, args.map(arg => arg.toString()));
+		const result = await Sproc.execute(attachments, args);
 		const output = result.sprocOutput.trim();
 		if (output.length != 0) {
 			try {
@@ -721,7 +726,7 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 	const codeBlock = endCodeBlockRegex.exec(past) || endCodeBlockRegex2.exec(past);
 	if (codeBlock) {
 		const codeText = codeBlock[1];
-		const args = tokenize(past.substr(0, codeBlock.index));
+		const args = tokenize(past.substring(0, codeBlock.index));
 		try {
 			const options = (args.length == 0) ? { images: true } : (() => {
 				let ret = {};
@@ -796,7 +801,7 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 			if (hasChannelPermission(message, "SEND_MESSAGES")) {
 				const errorMessage = `${error}`;
 				if (errorMessage.length > 1800) {
-					message.channel.send(`Error (Truncated): \`\`\`${errorMessage.substr(0, 1800)}\`\`\``).catch(catchHandler);
+					message.channel.send(`Error (Truncated): \`\`\`${errorMessage.substring(0, 1800)}\`\`\``).catch(catchHandler);
 				}
 				else {
 					message.channel.send(`Error: \`\`\`${errorMessage}\`\`\``).catch(catchHandler);
@@ -856,7 +861,7 @@ const parseEmojiSpec = (text: string) => {
 };
 
 const extractEmojiName = (text: string) => {
-	return text.substr(1, text.length - 2);
+	return text.substring(1, text.length - 1);
 };
 
 interface MessageMatch {
@@ -1182,7 +1187,7 @@ function help(message: Discord.Message, commandToken: string) {
 		const flag = commandFlag(message);
 		const lookupName = (() => {
 			if (commandName.startsWith(flag)) {
-				return commandName.substr(flag.length);
+				return commandName.substring(flag.length);
 			}
 			return commandName;
 		})();
@@ -1230,7 +1235,7 @@ const sendEmoji = (message: Discord.Message, bot: Discord.Client) => {
 };
 
 type Deletable = Discord.Message | Discord.PartialMessage;
-const findAtted = (message: Deletable) => {
+const findAtted = async (message: Deletable) => {
 	const pingRegex = /<@([!&])[0-9]+>/g;
 	const matches = message.content.match(pingRegex);
 	if (!matches || matches.length === 0) {
@@ -1239,8 +1244,8 @@ const findAtted = (message: Deletable) => {
 	const ret: (Discord.User | Discord.Role)[] = [];
 	for (const match of matches) {
 		const isRolePing = (match[2] == '&');
-		const id = match.substr(3, match.length - 4);
-		const pinged = isRolePing ? message.guild.roles.cache.get(id) : message.guild.members.cache.get(id).user;
+		const id = match.substring(3, match.length - 1);
+		const pinged = isRolePing ? (await message.guild.roles.fetch(id)) : (await message.guild.members.fetch()).get(id)?.user;
 		if (pinged) {
 			ret.push(pinged);
 		}
@@ -1286,7 +1291,7 @@ const createHandlers = async (bot: Discord.Client) => {
 			const firstWord = firstToken(message.content);
 			let commandFound = false;
 			if (firstWord.startsWith(flag)) {
-				const commandName = firstWord.substr(flag.length);
+				const commandName = firstWord.substring(flag.length);
 				const findCommand = (commands: Record<string, Command>) => {
 					if (commands) {
 						const command = commands[commandName];
@@ -1353,8 +1358,9 @@ const createHandlers = async (bot: Discord.Client) => {
 			return;
 		}
 		try {
-			const referenced = (await findReferenced(deleted));
-			const atted = findAtted(deleted);
+			const pinged = await Promise.all([findReferenced(deleted), findAtted(deleted)]);
+			const referenced = pinged[0];
+			const atted = pinged[1];
 			if (referenced !== undefined || atted != undefined) {
 				const logChannel = deleted.guild.channels.cache.find(channel => channel.name === "ghost-pings");
 				if (logChannel.type === "text") {

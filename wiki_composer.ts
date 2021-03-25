@@ -42,7 +42,7 @@ async function fetchComposerPageSize(pageLinks: string[]) {
 	const pageTitles: string[] = [];
 	pageLinks.forEach((link, index) => {
 		if (link && link.startsWith(wikiPrefix)) {
-			const title = link.substr(wikiPrefix.length);
+			const title = link.substring(wikiPrefix.length);
 			pageTitles.push(title);
 			pageIndices[title] = index;
 		}
