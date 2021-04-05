@@ -1434,21 +1434,23 @@ const installHandlers = async (bot: Discord.Client) => {
 					const timeLimit = 1000 * 60 * 60 * 24 * 21; // three weeks
 					const category = channel
 					if (channel.parent.id === activeCategoryId) {
-						(channel as Discord.TextChannel).messages.fetch({ limit: 1 }).then((messages) => {
+						const ch = channel as Discord.TextChannel;
+						ch.messages.fetch({ limit: 1 }).then((messages) => {
 							if (messages.first()) {
 								const now = new Date();
 								if (now.getTime() - messages.first().createdAt.getTime() > timeLimit) {
-									channel.setParent(inactiveCategoryId).catch(catchHandler);
+									ch.setParent(inactiveCategoryId).catch(catchHandler);
 								}
 							}
 						}, () => { });
 					}
 					else if (channel.parent.id === inactiveCategoryId) {
-						(channel as Discord.TextChannel).messages.fetch({ limit: 1 }).then((messages) => {
+						const ch = channel as Discord.TextChannel;
+						ch.messages.fetch({ limit: 1 }).then((messages) => {
 							if (messages.first()) {
 								const now = new Date();
 								if (now.getTime() - messages.first().createdAt.getTime() <= timeLimit) {
-									channel.setParent(activeCategoryId).catch(catchHandler);
+									ch.setParent(activeCategoryId).catch(catchHandler);
 								}
 							}
 						}, () => { });
@@ -1458,41 +1460,20 @@ const installHandlers = async (bot: Discord.Client) => {
 		}
 	};
 	setTimeout(pollActivity, 5000);
-	setInterval(pollActivity, 5000);
+	setInterval(pollActivity, 60000);
 
 	const sortChannels = (oldChannel: Discord.Channel, channel: Discord.Channel) => {
 		if (channel.type === "text") {
 			const guild = (channel as Discord.TextChannel).guild;
-			const active: Discord.GuildChannel[] = [];
-			const inactive: Discord.GuildChannel[] = [];
 			const [activeCategoryId, inactiveCategoryId] = findCategoryIds(guild);
-			for (const [channelId, channel] of guild.channels.cache) {
-				if (channel.parent) {
-					if (channel.parent.id === activeCategoryId) {
-						active.push(channel);
-					}
-					else if (channel.parent.id === inactiveCategoryId) {
-						inactive.push(channel);
-					}
-				}
-			}
-			const comparator = (a: Discord.GuildChannel, b: Discord.GuildChannel) => a.name.toUpperCase().localeCompare(b.name.toUpperCase());
-			active.sort(comparator);
-			inactive.sort(comparator);
-			const posSetter = (channel: Discord.GuildChannel, index: number) => {
-				if (channel.position != index) {
-					channel.setPosition(index).catch(() => { });
-				}
-			};
-			active.forEach(posSetter);
-			inactive.forEach(posSetter);
+
+
 		}
 	};
 
 	bot.on("message", messageHandler);
 	bot.on("messageDelete", deleteHandler);
 	bot.on("messageReactionAdd", messageReactionHandler);
-	bot.on("channelUpdate", sortChannels);
-	return { message: messageHandler, messageDelete: deleteHandler, messageReactionAdd: messageReactionHandler, channelUpdate: sortChannels };
+	return { message: messageHandler, messageDelete: deleteHandler, messageReactionAdd: messageReactionHandler };
 };
 
