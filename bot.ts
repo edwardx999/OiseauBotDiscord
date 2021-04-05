@@ -1,7 +1,7 @@
 import * as Discord from "discord.js";
 import * as fs from "fs";
 import { createMessageHandler } from "./message_handler";
-import { createHandlers } from "./handlers";
+import { installHandlers } from "./handlers";
 const args = process.argv;
 
 if (args.length != 3) {
@@ -25,10 +25,7 @@ client.on("ready", () => {
 	console.log("Connected");
 });
 
-createHandlers(client).then(handlers => {
-	for (const handler in handlers) {
-		client.on(handler, handlers[handler]);
-	}
+installHandlers(client).then(handlers => {
 	client.login(token);
 });
 
