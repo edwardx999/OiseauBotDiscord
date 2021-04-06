@@ -1462,15 +1462,6 @@ const installHandlers = async (bot: Discord.Client) => {
 	setTimeout(pollActivity, 5000);
 	setInterval(pollActivity, 60000);
 
-	const sortChannels = (oldChannel: Discord.Channel, channel: Discord.Channel) => {
-		if (channel.type === "text") {
-			const guild = (channel as Discord.TextChannel).guild;
-			const [activeCategoryId, inactiveCategoryId] = findCategoryIds(guild);
-
-
-		}
-	};
-
 	bot.on("message", messageHandler);
 	bot.on("messageDelete", deleteHandler);
 	bot.on("messageReactionAdd", messageReactionHandler);
