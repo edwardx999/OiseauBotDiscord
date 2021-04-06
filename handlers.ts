@@ -15,6 +15,7 @@ import { setInterval } from "timers";
 type CommandFunction = (message: Discord.Message, commandToken: string, bot: Discord.Client) => any;
 
 const catchHandler = (err: any) => {
+	console.error(new Date());
 	console.error(err);
 }
 
@@ -1252,6 +1253,11 @@ const toHms = (millis: number) => {
 	return `${seconds}.${(millis % 1000).toString().padStart(3, "0")}s`;
 };
 
+const msSince = (date: Date) => {
+	const now = new Date();
+	return now.getTime() - date.getTime();
+};
+
 const installHandlers = async (bot: Discord.Client) => {
 	try {
 		const prefixData = await Cache.get(storagePath, prefixesCacheKey);
@@ -1436,22 +1442,16 @@ const installHandlers = async (bot: Discord.Client) => {
 					if (channel.parent.id === activeCategoryId) {
 						const ch = channel as Discord.TextChannel;
 						ch.messages.fetch({ limit: 1 }).then((messages) => {
-							if (messages.first()) {
-								const now = new Date();
-								if (now.getTime() - messages.first().createdAt.getTime() > timeLimit) {
-									ch.setParent(inactiveCategoryId).catch(catchHandler);
-								}
+							if (!messages.first() || msSince(messages.first().createdAt) > timeLimit) {
+								ch.setParent(inactiveCategoryId).catch(catchHandler);
 							}
 						}, () => { });
 					}
 					else if (channel.parent.id === inactiveCategoryId) {
 						const ch = channel as Discord.TextChannel;
 						ch.messages.fetch({ limit: 1 }).then((messages) => {
-							if (messages.first()) {
-								const now = new Date();
-								if (now.getTime() - messages.first().createdAt.getTime() <= timeLimit) {
-									ch.setParent(activeCategoryId).catch(catchHandler);
-								}
+							if (messages.first() && msSince(messages.first().createdAt) <= timeLimit) {
+								ch.setParent(activeCategoryId).catch(catchHandler);
 							}
 						}, () => { });
 					}
