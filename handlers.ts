@@ -1429,6 +1429,8 @@ const installHandlers = async (bot: Discord.Client) => {
 		}
 		return [activeCategoryId, inactiveCategoryId];
 	};
+	let activeChannelMoves = 0;
+	const pollInterval = 5 * 60000; // race condition-heavy but okay
 	const pollActivity = () => {
 		// assumes category names are unique
 		for (const [guildId, guild] of bot.guilds.cache) {
@@ -1438,29 +1440,76 @@ const installHandlers = async (bot: Discord.Client) => {
 			for (const [channelId, channel] of guild.channels.cache) {
 				if (channel.type === "text") {
 					const timeLimit = 1000 * 60 * 60 * 24 * 21; // three weeks
-					const category = channel
-					if (channel.parent.id === activeCategoryId) {
+					const id = channel.parent?.id;
+					if (id === activeCategoryId) {
 						const ch = channel as Discord.TextChannel;
 						ch.messages.fetch({ limit: 1 }).then((messages) => {
 							if (!messages.first() || msSince(messages.first().createdAt) > timeLimit) {
-								ch.setParent(inactiveCategoryId).catch(catchHandler);
+								++activeChannelMoves;
+								ch.setParent(inactiveCategoryId).catch(catchHandler).finally(() => {
+									--activeChannelMoves;
+								});
 							}
 						}, () => { });
 					}
-					else if (channel.parent.id === inactiveCategoryId) {
+					else if (id === inactiveCategoryId) {
 						const ch = channel as Discord.TextChannel;
 						ch.messages.fetch({ limit: 1 }).then((messages) => {
 							if (messages.first() && msSince(messages.first().createdAt) <= timeLimit) {
-								ch.setParent(activeCategoryId).catch(catchHandler);
+								++activeChannelMoves;
+								ch.setParent(activeCategoryId).catch(catchHandler).finally(() => {
+									--activeChannelMoves;
+								});
 							}
 						}, () => { });
 					}
 				}
 			}
 		}
+		setTimeout(() => {
+			if (activeChannelMoves > 0) {
+				return;
+			}
+			const nameCmp = (a: Discord.GuildChannel, b: Discord.GuildChannel) => {
+				return a.name.localeCompare(b.name);
+			};
+			for (const [guildId, guild] of bot.guilds.cache) {
+				const active: Discord.GuildChannel[] = [];
+				const inactive: Discord.GuildChannel[] = [];
+				const [activeCategoryId, inactiveCategoryId] = findCategoryIds(guild);
+				if (!activeCategoryId || !inactiveCategoryId) {
+					continue;
+				}
+				for (const [channelId, channel] of guild.channels.cache) {
+					const id = channel.parent?.id;
+					if (id === activeCategoryId) {
+						active.push(channel);
+					}
+					else if (id === inactiveCategoryId) {
+						inactive.push(channel);
+					}
+				}
+				const sortGroup = (group: Discord.GuildChannel[]) => {
+					group.sort(nameCmp);
+					if (group.some((channel, index) => channel.position != index)) {
+						console.log(`${new Date()} Sorting channels`);
+						let i = 0;
+						const callback = () => {
+							++i;
+							if (i < group.length) {
+								group[i].setPosition(i).then(callback, catchHandler);
+							}
+						};
+						group[0].setPosition(0).then(callback, catchHandler);
+					}
+				};
+				sortGroup(active);
+				sortGroup(inactive);
+			}
+		}, pollInterval / 2);
 	};
 	setTimeout(pollActivity, 5000);
-	setInterval(pollActivity, 60000);
+	setInterval(pollActivity, pollInterval);
 
 	bot.on("message", messageHandler);
 	bot.on("messageDelete", deleteHandler);
