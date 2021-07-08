@@ -23,6 +23,7 @@ interface Command {
 	command: CommandFunction;
 	explanation: string;
 	usage: string;
+	hidden?: boolean;
 }
 
 type GuildId = string;
@@ -254,6 +255,7 @@ class ComposerHangman extends Hangman {
 	readonly realName: string;
 	readonly dates: string;
 	readonly url: string;
+	public lastGuess: string;
 	private categories?: string[];
 	private dateHintUsed: boolean;
 	private hintsUsed: string[];
@@ -262,6 +264,7 @@ class ComposerHangman extends Hangman {
 		this.realName = realname;
 		this.dates = dates;
 		this.url = url;
+		this.lastGuess = "";
 		this.dateHintUsed = false;
 		this.hintsUsed = [];
 	}
@@ -410,16 +413,24 @@ function startGame(message: Discord.Message, difficult: Difficulty) {
 }
 
 function hangmanGuess(message: Discord.Message, game: ComposerHangman, guess: string) {
+	if (game.lastGuess === guess) {
+		return;
+	}
+	game.lastGuess = guess;
 	const authorId = message.author.id;
 	const guessed = game.guess(guess);
 	if (typeof guessed === "string") {
-		message.channel.send(`<@${authorId}>, ${guessed}`);
+		initAlreadyGuessedBanList().then(banList => {
+			if (!banList.has(message.author.id)) {
+				message.channel.send(`<@${authorId}>, ${guessed}`).catch(catchHandler);
+			}
+		});
 	}
 	else {
 		if (guessed == 0) {
 			if (game.loss()) {
 				message.channel.send(hangmanMessage(game, `"${guess}" not found, you lost!`, message.author, true) + "\n" + hangmanCompleteMessage(game)).catch(catchHandler);
-				delete hangmanGames[authorId]
+				delete hangmanGames[authorId];
 			}
 			else {
 				message.channel.send(hangmanMessage(game, `"${guess}" not found.`, message.author, false)).catch(catchHandler);
@@ -559,6 +570,18 @@ const createLastBuffer = (init?: Urls[]): LastBuffer => {
 };
 
 const storagePath = `.${pathSeparator}data`;
+const cacheGet = async (key: string) => {
+	try {
+		return JSON.parse((await Cache.get(storagePath, key)).data.toString());
+	} catch {
+		return undefined;
+	}
+};
+
+const cachePut = async (key: string, data: any) => {
+	return Cache.put(storagePath, key, JSON.stringify(data));
+}
+
 const lastFromPersistent = async (message: Discord.Message) => {
 	const key = sprocRequestKey(message);
 	try {
@@ -970,10 +993,10 @@ const helpMessage = (respondTo: Discord.Message) => {
 			.setColor("#ABCDEF")
 			.setTitle("OiseauBot Help");
 		function createCommandList(list: Record<string, Command>) {
-			return Object.keys(list).map(commandName => {
-				const command = list[commandName];
-				return command.usage.replace(commandTokenVar, prefix + commandName);
-			}).join("\n");
+			return Object.entries(list)
+				.filter(([_, command]) => !command.hidden)
+				.map(([commandName, command]) => command.usage.replace(commandTokenVar, prefix + commandName))
+				.join("\n");
 		}
 		for (const channelName in commands) {
 			message.addField(channelName.length == 0 ? `Commands in all channels` : `Commands in channel #${channelName}`, createCommandList(commands[channelName]));
@@ -1048,9 +1071,9 @@ const resetGuessScoreRole: CommandFunction = (message, commandToken, bot) => {
 	}
 };
 
-const guessScoreHandler = async (message: Discord.Message) => {
+const guessScoreHandler = async (message: Discord.Message, useRole: boolean) => {
 	if (message.channel.type == "text") {
-		const guessHostRole = await getGuessScoreRole(message.guild.id);
+		const guessHostRole = useRole ? await getGuessScoreRole(message.guild.id) : undefined;
 		if (guessHostRole === undefined || message.guild.member(message.author).roles.cache.has(guessHostRole)) {
 			const attachments = message.attachments;
 			try {
@@ -1075,6 +1098,79 @@ const guessScoreHandler = async (message: Discord.Message) => {
 			} catch (err) {
 				catchHandler(err);
 			}
+		}
+	}
+};
+
+const setOwner: CommandFunction = (message, token, bot) => {
+	if (message.member.hasPermission("ADMINISTRATOR")) {
+		const pastToken = pastFirstToken(message.content, token);
+		const users = [...pastToken.matchAll(/<@[!&]([0-9]+)>/g)].map(v => v[1]);
+		const permissions: Discord.OverwriteResolvable[] = users.map(id => {
+			return { id, allow: ["EMBED_LINKS", "ATTACH_FILES", "MANAGE_MESSAGES", "MANAGE_CHANNELS", "MANAGE_ROLES"] };
+		});
+		const channels = [...pastToken.matchAll(/<#([0-9]+)>/g)].map(v => v[1]);
+		const guild = message.guild;
+		for (const channelId of channels) {
+			const channel = guild.channels.cache.get(channelId);
+			if (channel) {
+				channel.lockPermissions().then((channel) => {
+					channel.overwritePermissions(permissions).catch(catchHandler);
+				}).catch(catchHandler);
+			}
+		}
+	}
+};
+
+const stealScoreGuessHost: CommandFunction = async (message, token, bot) => {
+	const guild = message.guild;
+	const guildId = guild.id;
+	const guessHostRole = await getGuessScoreRole(guildId);
+	if (guessHostRole) {
+		const users = guild.roles.resolve(guessHostRole);
+		let alert = "";
+		for (const [_, user] of users.members) {
+			try {
+				await guild.member(user).roles.remove(guessHostRole);
+			} catch (err) {
+				catchHandler(err);
+			}
+			alert += user.toString();
+		}
+		guild.member(message.author).roles.add(guessHostRole).catch(catchHandler);
+		alert += `\n${message.author} has taken score guess host role`;
+		message.channel.send(alert).catch(catchHandler);
+	}
+};
+
+let alreadyGuessedBanList: Set<UserId> = undefined;
+const alreadyGuessedBanStorageKey = "alreadyGuessedBan";
+const initAlreadyGuessedBanList = async () => {
+	if (alreadyGuessedBanList === undefined) {
+		try {
+			const storedList = JSON.parse((await Cache.get(storagePath, alreadyGuessedBanStorageKey)).data.toString());
+			if (Array.isArray(storedList)) {
+				alreadyGuessedBanList = new Set<UserId>(storedList);
+			} else {
+				alreadyGuessedBanList = new Set<UserId>();
+			}
+		} catch {
+			alreadyGuessedBanList = new Set<UserId>();
+		}
+	}
+	return alreadyGuessedBanList;
+};
+
+const alreadyGuessedBan: CommandFunction = async (message, token, bot) => {
+	if (message.member.hasPermission("ADMINISTRATOR")) {
+		const args = tokenize(pastFirstToken(message.content, token));
+		if (args.length > 0) {
+			const banList = await initAlreadyGuessedBanList();
+			for (const arg of args) {
+				banList.add(arg);
+			}
+			const banArray = JSON.stringify(Array.from(banList.values()));
+			Cache.put(storagePath, alreadyGuessedBanStorageKey, banArray.toString()).catch(catchHandler);
 		}
 	}
 };
@@ -1119,7 +1215,8 @@ const commands: Record<string, Record<string, Command>> = {
 		"cpp": {
 			command: execGodbolt,
 			explanation: "todo",
-			usage: "todo"
+			usage: "todo",
+			hidden: true
 		},
 		"giveme-blacklist": {
 			command: givemeBlacklist,
@@ -1141,6 +1238,12 @@ const commands: Record<string, Record<string, Command>> = {
 			explanation: "A role will no longer be assigned to the score guess host",
 			usage: "$COMMAND_TOKEN$"
 		},
+		"already-guessed-ban": {
+			command: alreadyGuessedBan,
+			explanation: "",
+			usage: "",
+			hidden: true
+		}
 	},
 	"bot-spam": {
 		"hi": { command: sayHi, explanation: "Says hello", usage: "$COMMAND_TOKEN$" },
@@ -1153,6 +1256,13 @@ const commands: Record<string, Record<string, Command>> = {
 		"giveme": { command: giveRole, explanation: "Gives you a role", usage: "$COMMAND_TOKEN$ <role>" },
 		"takeaway": { command: takeRole, explanation: "Takes a role from you", usage: "$COMMAND_TOKEN$ <role>" },
 		"roles": { command: listRoles, explanation: "List the roles I can give", usage: "$COMMAND_TOKEN$" }
+	},
+	"guess-the-score": {
+		"steal": {
+			command: stealScoreGuessHost,
+			explanation: "Take score guess host role by force",
+			usage: "$COMMAND_TOKEN$"
+		}
 	}
 };
 
@@ -1224,7 +1334,7 @@ const findAtted = async (message: Deletable) => {
 	for (const match of matches) {
 		const isRolePing = (match[2] == '&');
 		const id = match.substring(3, match.length - 1);
-		const pinged = isRolePing ? (await message.guild.roles.fetch(id)) : (await message.guild.members.fetch()).get(id)?.user;
+		const pinged = isRolePing ? (await message.guild.roles.fetch(id)) : (await message.guild.members.fetch(id))?.user;
 		if (pinged) {
 			ret.push(pinged);
 		}
@@ -1306,7 +1416,10 @@ const installHandlers = async (bot: Discord.Client) => {
 						deleteExtraneous(message);
 					} break;
 					case "guess-the-score": {
-						guessScoreHandler(message);
+						guessScoreHandler(message, true);
+					} break;
+					case "guess-the-score-for-idiots": {
+						guessScoreHandler(message, false);
 					} break;
 				}
 			}
@@ -1439,14 +1552,14 @@ const installHandlers = async (bot: Discord.Client) => {
 			const [activeCategoryId, inactiveCategoryId] = findCategoryIds(guild);
 			for (const [channelId, channel] of guild.channels.cache) {
 				if (channel.type === "text") {
-					const timeLimit = 1000 * 60 * 60 * 24 * 21; // three weeks
+					const timeLimit = 1000 * 60 * 60 * 24 * 7 * 2; // 2 weeks
 					const id = channel.parent?.id;
 					if (id === activeCategoryId) {
 						const ch = channel as Discord.TextChannel;
 						ch.messages.fetch({ limit: 1 }).then((messages) => {
 							if (!messages.first() || msSince(messages.first().createdAt) > timeLimit) {
 								++activeChannelMoves;
-								ch.setParent(inactiveCategoryId).catch(catchHandler).finally(() => {
+								ch.setParent(inactiveCategoryId, { lockPermissions: false }).catch(catchHandler).finally(() => {
 									--activeChannelMoves;
 								});
 							}
@@ -1457,7 +1570,7 @@ const installHandlers = async (bot: Discord.Client) => {
 						ch.messages.fetch({ limit: 1 }).then((messages) => {
 							if (messages.first() && msSince(messages.first().createdAt) <= timeLimit) {
 								++activeChannelMoves;
-								ch.setParent(activeCategoryId).catch(catchHandler).finally(() => {
+								ch.setParent(activeCategoryId, { lockPermissions: false }).catch(catchHandler).finally(() => {
 									--activeChannelMoves;
 								});
 							}
