@@ -1,9 +1,7 @@
 import { createTempDir, pathSeparator, spawnTimeout, SpawnResult, makeCallOnce } from "./util";
 import * as fs from "fs";
-import * as cp from "child_process";
 import * as glob from "glob";
 import * as path from "path";
-import { clearTimeout } from "timers";
 
 export { render, cleanup, OutputFormats };
 
@@ -35,10 +33,15 @@ interface Result {
 	filePaths: string[];
 };
 
+
 const render = async (lilyCode: string, formats: Partial<Record<OutputFormats, any>>, timeoutMs?: number): Promise<Result> => {
-	if (lilyCode.indexOf("#") >= 0) {
-		throw "Illegal character #";
-	}
+	const checkIllegal = (badCharacter: string) => {
+		if (lilyCode.includes(badCharacter)) {
+			throw `Illegal character ${badCharacter}`;
+		}
+	};
+	checkIllegal("#");
+	checkIllegal("$");
 	const versionNumber = await version();
 	const directory = await createTempDir();
 	timeoutMs = timeoutMs || 60000;
@@ -50,10 +53,18 @@ const render = async (lilyCode: string, formats: Partial<Record<OutputFormats, a
 	title = ""
 	composer = ""
 }
+\\paper {
+  #(define fonts
+    (set-global-fonts
+     #:music "BMusicFont"
+     #:brace "profondo"
+     #:roman "Academico"
+    ))
+}
 ${lilyCode}
 `;
 		const args = (() => {
-			const ret = ["-dsafe", "--loglevel=ERROR"];
+			const ret = ["--loglevel=ERROR"];
 			if (formats[OutputFormats.IMAGES]) {
 				ret.push("-fpng");
 				ret.push("-dresolution=240");
