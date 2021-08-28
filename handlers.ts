@@ -723,6 +723,17 @@ const outputTypes = [
 ];
 const endCodeBlockRegex = /```([\s\S]*)```\s*$/;
 const endCodeBlockRegex2 = /`([\s\S]*)`\s*$/;
+const addTrashCan = (message: Discord.Message, userId: UserId) => {
+	message.react("🗑️").catch(catchHandler);
+	const filter = (reaction: Discord.MessageReaction, user: Discord.User) => {
+		return reaction.emoji.name === "🗑️" && user.id === userId;
+	};
+	message.awaitReactions(filter, { max: 1, time: 300000 }).then((collected) => {
+		if (collected.size >= 1) {
+			message.delete().catch(catchHandler);
+		}
+	}, () => { });
+};
 
 const execLilyHelp = async (message: Discord.Message, commandToken: string, codeWrapper?: (code: string) => string) => {
 	if (!hasChannelPermission(message, ["ATTACH_FILES", "SEND_MESSAGES"])) {
@@ -731,6 +742,7 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 		}
 		return;
 	}
+	const userTrashcan = (output: Discord.Message) => addTrashCan(output, message.author.id);
 	const past = pastFirstToken(message.content, commandToken);
 	const codeBlock = endCodeBlockRegex.exec(past) || endCodeBlockRegex2.exec(past);
 	if (codeBlock) {
@@ -782,10 +794,10 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 						try {
 							const attachment = new Discord.MessageAttachment(result.filePaths[i]);
 							if (i == 0 && warningMessage.length > 0) {
-								await message.channel.send(warningMessage, attachment);
+								userTrashcan(await message.channel.send(warningMessage, attachment));
 							}
 							else {
-								await message.channel.send(attachment);
+								userTrashcan(await message.channel.send(attachment));
 							}
 						}
 						catch (error) {
@@ -793,7 +805,7 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 								try {
 									const attachmentTooLarge = 40005;
 									const errorMessage = error.code === attachmentTooLarge ? "(Result too large)" : `Error: ${error.message}`;
-									await message.channel.send(errorMessage);
+									userTrashcan(await message.channel.send(errorMessage));
 								} catch (ex) {
 									catchHandler(ex);
 								}
@@ -810,16 +822,16 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 			if (hasChannelPermission(message, "SEND_MESSAGES")) {
 				const errorMessage = `${error}`;
 				if (errorMessage.length > 1800) {
-					message.channel.send(`Error (Truncated): \`\`\`${errorMessage.substring(0, 1800)}\`\`\``).catch(catchHandler);
+					message.channel.send(`Error (Truncated): \`\`\`${errorMessage.substring(0, 1800)}\`\`\``).then(userTrashcan, catchHandler);
 				}
 				else {
-					message.channel.send(`Error: \`\`\`${errorMessage}\`\`\``).catch(catchHandler);
+					message.channel.send(`Error: \`\`\`${errorMessage}\`\`\``).then(userTrashcan, catchHandler);
 				}
 			}
 		}
 	}
 	else {
-		message.channel.send("No lilypond code found. Please put lilypond code inside \\`\\`\\`").catch(catchHandler);
+		message.channel.send("No lilypond code found. Please put lilypond code inside \\`\\`\\`").then(userTrashcan, catchHandler);
 	}
 };
 
@@ -1175,6 +1187,33 @@ const alreadyGuessedBan: CommandFunction = async (message, token, bot) => {
 	}
 };
 
+const timestampRegex = /.*?(\d+)$/;
+const getMessageDate = (message: Discord.Message, token: string) => {
+	const args = tokenize(pastFirstToken(message.content, token));
+	if (args.length == 1) {
+		const id = timestampRegex.exec(args[0]);
+		if (id) {
+			return Discord.SnowflakeUtil.deconstruct(id[1]).date;
+		}
+	}
+	return undefined;
+};
+
+const getTimestamp: CommandFunction = async (message, token, bot) => {
+	const date = getMessageDate(message, token);
+	if (date) {
+		message.channel.send(date.toUTCString()).catch(catchHandler);
+	}
+};
+
+const getTimeSince: CommandFunction = async (message, token, bot) => {
+	const date = getMessageDate(message, token);
+	if (date) {
+		const time = (new Date()).getTime() - date.getTime();
+		message.channel.send(toHms(time)).catch(catchHandler);
+	}
+};
+
 const commands: Record<string, Record<string, Command>> = {
 	"": {
 		"sproc": {
@@ -1237,6 +1276,16 @@ const commands: Record<string, Record<string, Command>> = {
 			command: resetGuessScoreRole,
 			explanation: "A role will no longer be assigned to the score guess host",
 			usage: "$COMMAND_TOKEN$"
+		},
+		"timestamp": {
+			command: getTimestamp,
+			explanation: "Get the timestamp for a message",
+			usage: "$COMMAND_TOKEN <message url or id>"
+		},
+		"timesince": {
+			command: getTimeSince,
+			explanation: "Get the time since a message",
+			usage: "$COMMAND_TOKEN <message url or id>"
 		},
 		"already-guessed-ban": {
 			command: alreadyGuessedBan,
