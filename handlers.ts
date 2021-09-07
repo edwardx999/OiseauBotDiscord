@@ -192,17 +192,17 @@ const giveRole: CommandFunction = (message, commandToken) => {
 	roleCommandHelper(message, commandToken, async (role) => {
 		const userRoles = (await guild.members.fetch(message.author.id)).roles;
 		if (findRoleId(userRoles, role.id)) {
-			message.channel.send(`<@${message.author.id}>, you already have role ${role.name}`).catch(catchHandler);
+			message.reply(`You already have role ${role.name}`).catch(catchHandler);
 		}
 		else {
 			const forbiddenCallback = () => {
-				message.channel.send(`<@${message.author.id}>, I cannot give you role ${role.name}`).catch(catchHandler);
+				message.reply(`I cannot give you role ${role.name}`).catch(catchHandler);
 			};
 			const blacklist = await initBlacklist(guild.id);
 			if (!(blacklist[role.id])) {
 				userRoles.add(role).then(
 					() => {
-						message.channel.send(`<@${message.author.id}>, you have been given role ${role.name}`).catch(catchHandler);
+						message.reply(`You have been given role ${role.name}`).catch(catchHandler);
 					}, forbiddenCallback);
 			}
 			else {
@@ -217,15 +217,15 @@ const takeRole: CommandFunction = (message, commandToken) => {
 	roleCommandHelper(message, commandToken, async (role) => {
 		const userRoles = (await guild.members.fetch(message.author.id)).roles;
 		if (!findRoleId(userRoles, role.id)) {
-			message.channel.send(`<@${message.author.id}>, you do not have role ${role.name}`).catch(catchHandler);
+			message.reply(`You do not have role ${role.name}`).catch(catchHandler);
 		}
 		else {
 			userRoles.remove(role).then(
 				() => {
-					message.channel.send(`<@${message.author.id}>, you have lost role ${role.name}`).catch(catchHandler);
+					message.reply(`You have lost role ${role.name}`).catch(catchHandler);
 				},
 				() => {
-					message.channel.send(`<@${message.author.id}>, I cannot remove role ${role.name}`).catch(catchHandler);
+					message.reply(`I cannot remove role ${role.name}`).catch(catchHandler);
 				});
 		}
 	});
@@ -1661,9 +1661,9 @@ const installHandlers = async (bot: Discord.Client) => {
 	setTimeout(pollActivity, 5000);
 	setInterval(pollActivity, pollInterval);
 
-	bot.on("message", messageHandler);
+	bot.on("messageCreate", messageHandler);
 	bot.on("messageDelete", deleteHandler);
 	bot.on("messageReactionAdd", messageReactionHandler);
-	return { message: messageHandler, messageDelete: deleteHandler, messageReactionAdd: messageReactionHandler };
+	return { messageCreate: messageHandler, messageDelete: deleteHandler, messageReactionAdd: messageReactionHandler };
 };
 
