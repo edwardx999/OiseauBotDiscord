@@ -32,7 +32,7 @@ async function execute(fileUrls: string[], commands: string[], timeoutMs?: numbe
 				}
 			})();
 			const fileStream = fs.createWriteStream(path);
-			await new Promise((resolve, reject) => {
+			await new Promise<void>((resolve, reject) => {
 				request.body.pipe(fileStream);
 				request.body.on("error", err => {
 					reject(err);

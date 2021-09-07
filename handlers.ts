@@ -113,7 +113,7 @@ function normalizeUppercase(str: string) {
 
 function noRoleExistReponse(message: Discord.Message, roleName: string) {
 	const rank = message.guild.me.roles.highest.position;
-	const roles = message.guild.roles.cache.array().filter(role => role.position < rank && !role.name.startsWith("@"));
+	const roles = message.guild.roles.cache.filter(role => role.position < rank && !role.name.startsWith("@"));
 	const rolesNormalized = roles.map(role => normalizeUppercase(role.name));
 	const desiredNormalized = normalizeUppercase(roleName);
 	const nearest = StringSimilarity.findBestMatch(desiredNormalized, rolesNormalized);
@@ -187,10 +187,10 @@ const roleCommandHelper = (message: Discord.Message, commandToken: string, doWit
 	}
 };
 
-const giveRole: CommandFunction = async (message, commandToken) => {
+const giveRole: CommandFunction = (message, commandToken) => {
 	const guild = message.guild;
 	roleCommandHelper(message, commandToken, async (role) => {
-		const userRoles = guild.member(message.author.id).roles;
+		const userRoles = (await guild.members.fetch(message.author.id)).roles;
 		if (findRoleId(userRoles, role.id)) {
 			message.channel.send(`<@${message.author.id}>, you already have role ${role.name}`).catch(catchHandler);
 		}
@@ -214,8 +214,8 @@ const giveRole: CommandFunction = async (message, commandToken) => {
 
 const takeRole: CommandFunction = (message, commandToken) => {
 	const guild = message.guild;
-	roleCommandHelper(message, commandToken, (role) => {
-		const userRoles = guild.member(message.author.id).roles;
+	roleCommandHelper(message, commandToken, async (role) => {
+		const userRoles = (await guild.members.fetch(message.author.id)).roles;
 		if (!findRoleId(userRoles, role.id)) {
 			message.channel.send(`<@${message.author.id}>, you do not have role ${role.name}`).catch(catchHandler);
 		}
@@ -232,7 +232,7 @@ const takeRole: CommandFunction = (message, commandToken) => {
 };
 
 const givemeUnblacklist: CommandFunction = (message, commandToken) => {
-	if (message.member.hasPermission("ADMINISTRATOR")) {
+	if (message.member.permissions.has("ADMINISTRATOR")) {
 		roleCommandHelper(message, commandToken, (role) => {
 			removeFromBlacklist(message.guild.id, role.id).then(
 				() => { message.channel.send(`Role ${role.name} has been unblacklisted`).catch(catchHandler); },
@@ -242,7 +242,7 @@ const givemeUnblacklist: CommandFunction = (message, commandToken) => {
 };
 
 const givemeBlacklist: CommandFunction = (message, commandToken) => {
-	if (message.member.hasPermission("ADMINISTRATOR")) {
+	if (message.member.permissions.has("ADMINISTRATOR")) {
 		roleCommandHelper(message, commandToken, (role) => {
 			addToBlacklist(message.guild.id, role.id).then(
 				() => { message.channel.send(`Role ${role.name} has been blacklisted`).catch(catchHandler); },
@@ -527,9 +527,12 @@ const hangman: CommandFunction = (message, commandToken) => {
 				break;
 			case "help":
 				{
-					message.channel.send(new Discord.MessageEmbed()
-						.setTitle("Hangman Help").setColor("#654321")
-						.addField("Commands", `Start Game: ${commandToken} [difficulty: easiest, easy, medium, hard, hardest]\nGuess: ${commandToken} guess <letter>\nGuess(shorthand): <single letter>\nSolve: ${commandToken} solve <answer>\nHint: ${commandToken} hint\nGive Up: ${commandToken} giveup`)).catch(catchHandler);
+					message.channel.send({
+						embeds: [new Discord.MessageEmbed()
+							.setTitle("Hangman Help").setColor("#654321")
+							.addField("Commands",
+								`Start Game: ${commandToken} [difficulty: easiest, easy, medium, hard, hardest]\nGuess: ${commandToken} guess <letter>\nGuess(shorthand): <single letter>\nSolve: ${commandToken} solve <answer>\nHint: ${commandToken} hint\nGive Up: ${commandToken} giveup`)]
+					}).catch(catchHandler);
 				}
 				break;
 			case "easiest":
@@ -545,13 +548,13 @@ const hangman: CommandFunction = (message, commandToken) => {
 	}
 };
 
-function hasGuildPermission(message: Discord.Message, permission: Discord.BitFieldResolvable<Discord.PermissionString>) {
+function hasGuildPermission(message: Discord.Message, permission: Discord.PermissionResolvable) {
 	const permissions = message.guild.me.permissions;
 	return permissions.has(permission);
 }
 
-function hasChannelPermission(message: Discord.Message, permission: Discord.BitFieldResolvable<Discord.PermissionString>) {
-	const permissions = message.guild.me.permissionsIn(message.channel);
+function hasChannelPermission(message: Discord.Message, permission: Discord.PermissionResolvable) {
+	const permissions = message.guild.me.permissionsIn(message.channel.id);
 	return permissions.has(permission);
 }
 
@@ -685,7 +688,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 		for (let i = 0; i < result.filePaths.length; ++i) {
 			try {
 				const attachment = new Discord.MessageAttachment(result.filePaths[i]);
-				const sent = await message.channel.send(attachment);
+				const sent = await message.channel.send({ files: [attachment] });
 				for (const attachment of sent.attachments) {
 					responses.push(attachment[1].url);
 				}
@@ -728,7 +731,7 @@ const addTrashCan = (message: Discord.Message, userId: UserId) => {
 	const filter = (reaction: Discord.MessageReaction, user: Discord.User) => {
 		return reaction.emoji.name === "🗑️" && user.id === userId;
 	};
-	message.awaitReactions(filter, { max: 1, time: 300000 }).then((collected) => {
+	message.awaitReactions({ filter, max: 1, time: 300000 }).then((collected) => {
 		if (collected.size >= 1) {
 			message.delete().catch(catchHandler);
 		}
@@ -794,10 +797,10 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 						try {
 							const attachment = new Discord.MessageAttachment(result.filePaths[i]);
 							if (i == 0 && warningMessage.length > 0) {
-								userTrashcan(await message.channel.send(warningMessage, attachment));
+								userTrashcan(await message.channel.send({ content: warningMessage, files: [attachment] }));
 							}
 							else {
-								userTrashcan(await message.channel.send(attachment));
+								userTrashcan(await message.channel.send({ files: [attachment] }));
 							}
 						}
 						catch (error) {
@@ -856,7 +859,7 @@ const listRoles: CommandFunction = async (message) => {
 	const roles = guild.roles;
 	const botRole = guild.me.roles.highest;
 	const blacklist = await initBlacklist(guild.id);
-	const list = roles.cache.array()
+	const list = roles.cache
 		.sort((role1, role2) => role2.position - role1.position)
 		.map((role) => {
 			if (role.position < botRole.position && role.name != "@everyone" && role.id && !blacklist[role.id]) {
@@ -866,7 +869,7 @@ const listRoles: CommandFunction = async (message) => {
 		}).filter(v => v != null).join("\n");
 	const response = list.length > 0 ?
 		(hasChannelPermission(message, "EMBED_LINKS") ?
-			new Discord.MessageEmbed().setColor("#FEDCBA").addField("Roles I Can Give You", list) :
+			{ embeds: [new Discord.MessageEmbed().setColor("#FEDCBA").addField("Roles I Can Give You", list)] } :
 			"**Roles I Can Give You**\n" + list) :
 		noRolesMessage;
 	message.channel.send(response).catch(catchHandler);
@@ -943,7 +946,7 @@ const react: CommandFunction = async (message, commandToken, bot) => {
 				const guild = bot.guilds.cache.get(messageInfo.guild);
 				if (guild) {
 					const channel = guild.channels.cache.get(messageInfo.channel);
-					if (channel && channel.type === "text" && guild.me.permissionsIn(channel).has("ADD_REACTIONS")) {
+					if (channel && channel.type === "GUILD_TEXT" && guild.me.permissionsIn(channel).has("ADD_REACTIONS")) {
 						try {
 							const message = await (channel as Discord.TextChannel).messages.fetch(messageInfo.message);
 							message.react(emoji).catch(catchHandler);
@@ -966,7 +969,7 @@ const unreact: CommandFunction = async (message, commandToken, bot) => {
 			const guild = bot.guilds.cache.get(messageInfo.guild);
 			if (guild) {
 				const channel = guild.channels.cache.get(messageInfo.channel);
-				if (channel && channel.type === "text") {
+				if (channel && channel.type === "GUILD_TEXT") {
 					try {
 						const message = await (channel as Discord.TextChannel).messages.fetch(messageInfo.message);
 						for (const emoji of emojis) {
@@ -1015,12 +1018,12 @@ const helpMessage = (respondTo: Discord.Message) => {
 		}
 		helpMessageCache[prefix] = message;
 	}
-	return message;
+	return { embeds: [message] };
 };
 
 const prefixesCacheKey = "prefixes";
 const setPrefix: CommandFunction = (message, commandToken) => {
-	if (message.member.hasPermission("ADMINISTRATOR")) {
+	if (message.member.permissions.has("ADMINISTRATOR")) {
 		const args = pastFirstToken(message.content, commandToken).trim();
 		if (args.indexOf(" ") >= 0) {
 			message.channel.send("Prefix cannot have spaces.").catch(catchHandler);
@@ -1036,7 +1039,7 @@ const setPrefix: CommandFunction = (message, commandToken) => {
 	}
 };
 const resetPrefix: CommandFunction = (message, commandToken) => {
-	if (message.member.hasPermission("ADMINISTRATOR")) {
+	if (message.member.permissions.has("ADMINISTRATOR")) {
 		delete commandFlags[message.guild.id];
 		message.channel.send(`Prefix has been reset to \`${commandFlagPlaceholder}\``).catch(catchHandler);
 		Cache.put(storagePath, prefixesCacheKey, JSON.stringify(commandFlags)).catch(catchHandler);
@@ -1064,7 +1067,7 @@ const getGuessScoreRole = async (guildId: GuildId) => {
 };
 
 const setGuessScoreRole: CommandFunction = (message, commandToken, bot) => {
-	if (message.member.hasPermission("ADMINISTRATOR")) {
+	if (message.member.permissions.has("ADMINISTRATOR")) {
 		roleCommandHelper(message, commandToken, role => {
 			const guildId = message.guild.id;
 			guessScoreRole[guildId] = role.id;
@@ -1075,7 +1078,7 @@ const setGuessScoreRole: CommandFunction = (message, commandToken, bot) => {
 	}
 };
 const resetGuessScoreRole: CommandFunction = (message, commandToken, bot) => {
-	if (message.member.hasPermission("ADMINISTRATOR")) {
+	if (message.member.permissions.has("ADMINISTRATOR")) {
 		const guildId = message.guild.id;
 		delete guessScoreRole[guildId];
 		const storageKey = `guessScoreRole+${guildId}`;
@@ -1084,9 +1087,9 @@ const resetGuessScoreRole: CommandFunction = (message, commandToken, bot) => {
 };
 
 const guessScoreHandler = async (message: Discord.Message, useRole: boolean) => {
-	if (message.channel.type == "text") {
+	if (message.channel.type == "GUILD_TEXT") {
 		const guessHostRole = useRole ? await getGuessScoreRole(message.guild.id) : undefined;
-		if (guessHostRole === undefined || message.guild.member(message.author).roles.cache.has(guessHostRole)) {
+		if (guessHostRole === undefined || (await message.guild.members.fetch(message.author)).roles.cache.has(guessHostRole)) {
 			const attachments = message.attachments;
 			try {
 				if (attachments.size > 0) {
@@ -1114,26 +1117,6 @@ const guessScoreHandler = async (message: Discord.Message, useRole: boolean) => 
 	}
 };
 
-const setOwner: CommandFunction = (message, token, bot) => {
-	if (message.member.hasPermission("ADMINISTRATOR")) {
-		const pastToken = pastFirstToken(message.content, token);
-		const users = [...pastToken.matchAll(/<@[!&]([0-9]+)>/g)].map(v => v[1]);
-		const permissions: Discord.OverwriteResolvable[] = users.map(id => {
-			return { id, allow: ["EMBED_LINKS", "ATTACH_FILES", "MANAGE_MESSAGES", "MANAGE_CHANNELS", "MANAGE_ROLES"] };
-		});
-		const channels = [...pastToken.matchAll(/<#([0-9]+)>/g)].map(v => v[1]);
-		const guild = message.guild;
-		for (const channelId of channels) {
-			const channel = guild.channels.cache.get(channelId);
-			if (channel) {
-				channel.lockPermissions().then((channel) => {
-					channel.overwritePermissions(permissions).catch(catchHandler);
-				}).catch(catchHandler);
-			}
-		}
-	}
-};
-
 const stealScoreGuessHost: CommandFunction = async (message, token, bot) => {
 	const guild = message.guild;
 	const guildId = guild.id;
@@ -1143,13 +1126,13 @@ const stealScoreGuessHost: CommandFunction = async (message, token, bot) => {
 		let alert = "";
 		for (const [_, user] of users.members) {
 			try {
-				await guild.member(user).roles.remove(guessHostRole);
+				await guild.members.fetch(user).then(user => user.roles.remove(guessHostRole), catchHandler);
 			} catch (err) {
 				catchHandler(err);
 			}
 			alert += user.toString();
 		}
-		guild.member(message.author).roles.add(guessHostRole).catch(catchHandler);
+		guild.members.fetch(message.author).then(user => user.roles.add(guessHostRole), catchHandler).catch(catchHandler);
 		alert += `\n${message.author} has taken score guess host role`;
 		message.channel.send(alert).catch(catchHandler);
 	}
@@ -1174,7 +1157,7 @@ const initAlreadyGuessedBanList = async () => {
 };
 
 const alreadyGuessedBan: CommandFunction = async (message, token, bot) => {
-	if (message.member.hasPermission("ADMINISTRATOR")) {
+	if (message.member.permissions.has("ADMINISTRATOR")) {
 		const args = tokenize(pastFirstToken(message.content, token));
 		if (args.length > 0) {
 			const banList = await initAlreadyGuessedBanList();
@@ -1280,12 +1263,12 @@ const commands: Record<string, Record<string, Command>> = {
 		"timestamp": {
 			command: getTimestamp,
 			explanation: "Get the timestamp for a message",
-			usage: "$COMMAND_TOKEN <message url or id>"
+			usage: "$COMMAND_TOKEN$ <message url or id>"
 		},
 		"timesince": {
 			command: getTimeSince,
 			explanation: "Get the time since a message",
-			usage: "$COMMAND_TOKEN <message url or id>"
+			usage: "$COMMAND_TOKEN$ <message url or id>"
 		},
 		"already-guessed-ban": {
 			command: alreadyGuessedBan,
@@ -1339,7 +1322,7 @@ function help(message: Discord.Message, commandToken: string) {
 					.setTitle("OiseauBot Help")
 					.addField(`Help for ${fixedName}` + (channelName.length == 0 ? " in all channels" : ` in channel ${channelName}`),
 						`${command.usage.replace(commandTokenVar, fixedName)} \n${command.explanation}`);
-				message.channel.send(commandHelpMessage).catch(catchHandler);
+				message.channel.send({ embeds: [commandHelpMessage] }).catch(catchHandler);
 				return;
 			}
 		}
@@ -1428,7 +1411,7 @@ const installHandlers = async (bot: Discord.Client) => {
 		if (message.author.id === bot.user.id) {
 			return;
 		}
-		if (message.channel.type === "text" && hasChannelPermission(message, "SEND_MESSAGES")) {
+		if (message.channel.type === "GUILD_TEXT" && hasChannelPermission(message, "SEND_MESSAGES")) {
 			const channel = message.channel as Discord.TextChannel;
 			const flag = commandFlag(message);
 			const firstWord = firstToken(message.content);
@@ -1479,9 +1462,9 @@ const installHandlers = async (bot: Discord.Client) => {
 		const ref = message.reference;
 		if (ref) {
 			try {
-				const reffedChannel = bot.guilds.cache.get(ref.guildID)?.channels.cache.get(ref.channelID);
-				if (reffedChannel?.type === "text") {
-					const reffedMessage = await (reffedChannel as Discord.TextChannel).messages.fetch(ref.messageID);
+				const reffedChannel = bot.guilds.cache.get(ref.guildId)?.channels.cache.get(ref.channelId);
+				if (reffedChannel?.type === "GUILD_TEXT") {
+					const reffedMessage = await (reffedChannel as Discord.TextChannel).messages.fetch(ref.messageId);
 					if (reffedMessage) {
 						return [reffedMessage.author];
 					}
@@ -1509,15 +1492,15 @@ const installHandlers = async (bot: Discord.Client) => {
 			const atted = pinged[1];
 			if (referenced !== undefined || atted != undefined) {
 				const logChannel = deleted.guild.channels.cache.find(channel => channel.name === "ghost-pings");
-				if (logChannel.type === "text") {
+				if (logChannel.type === "GUILD_TEXT") {
 					const now = new Date();
 					const alert = new Discord.MessageEmbed()
 						.setTitle("Ghost Ping")
 						.addFields(
-							{ name: "User", value: deleted.author || "<Failed to find author>" },
-							{ name: "Message", value: deleted.content || "<Empty Message>" },
-							{ name: "Channel", value: deleted.channel || "<Failed to find channel>" })
-						.setTimestamp(now);
+							{ name: "User", value: deleted.author ? deleted.author.toString() : "<Failed to find author>" },
+							{ name: "Message", value: deleted.content ? deleted.content.toString() : "<Failed to find author>" },
+							{ name: "Channel", value: deleted.channel ? deleted.channel.toString() : "<Failed to find author>" })
+						.setTimestamp();
 					if (referenced != undefined) {
 						alert.addField("Replied To", enumerateUsers(referenced), true);
 					}
@@ -1525,7 +1508,7 @@ const installHandlers = async (bot: Discord.Client) => {
 						alert.addField("@ed", enumerateUsers(atted), true);
 					}
 					alert.addField("Time Before Deletion", toHms(now.getTime() - deleted.createdAt.getTime()));
-					(logChannel as Discord.TextChannel).send(alert).catch(err => console.error(err));
+					(logChannel as Discord.TextChannel).send({ embeds: [alert] }).catch(err => console.error(err));
 				}
 			}
 		} catch (err) {
@@ -1559,13 +1542,16 @@ const installHandlers = async (bot: Discord.Client) => {
 	const messageReactionHandler = async (reaction: Discord.MessageReaction, user: Discord.User) => {
 		if (reaction.emoji.name === "🍪") {
 			const message = reaction.message;
-			if (message.channel.type === "text" && (message.channel as Discord.TextChannel).name === "guess-the-score") {
+			if (message.channel.type === "GUILD_TEXT" && (message.channel as Discord.TextChannel).name === "guess-the-score") {
 				const guild = message.guild;
 				const guildId = guild.id;
 				const guessHostRole = await getGuessScoreRole(guildId);
-				if (guessHostRole && guild.member(user).roles.cache.has(guessHostRole)) {
-					guild.member(user).roles.remove(guessHostRole).catch(catchHandler);
-					guild.member(message.author).roles.add(guessHostRole).catch(catchHandler);
+				if (guessHostRole) {
+					const reactor = await guild.members.fetch(user);
+					if (reactor.roles.cache.has(guessHostRole)) {
+						reactor.roles.remove(guessHostRole).catch(catchHandler);
+						guild.members.fetch(message.author).then(user => user.roles.add(guessHostRole).catch(catchHandler), catchHandler);
+					}
 					// message.channel.messages.cache.clear();
 				}
 			}
@@ -1579,7 +1565,7 @@ const installHandlers = async (bot: Discord.Client) => {
 		let activeCategoryId: string = null;
 		let inactiveCategoryId: string = null;
 		for (const [channelId, channel] of guild.channels.cache) {
-			if (channel.type === "category") {
+			if (channel.type === "GUILD_CATEGORY") {
 				const name = channel.name.toUpperCase();
 				if (name === active) {
 					activeCategoryId = channel.id;
@@ -1600,8 +1586,8 @@ const installHandlers = async (bot: Discord.Client) => {
 			const moveToActive: Discord.GuildChannel[] = [];
 			const [activeCategoryId, inactiveCategoryId] = findCategoryIds(guild);
 			for (const [channelId, channel] of guild.channels.cache) {
-				if (channel.type === "text") {
-					const timeLimit = 1000 * 60 * 60 * 24 * 7 * 2; // 2 weeks
+				if (channel.type === "GUILD_TEXT") {
+					const timeLimit = 1000 * 60 * 60 * 24 * 9; // 9 days
 					const id = channel.parent?.id;
 					if (id === activeCategoryId) {
 						const ch = channel as Discord.TextChannel;
@@ -1644,11 +1630,13 @@ const installHandlers = async (bot: Discord.Client) => {
 				}
 				for (const [channelId, channel] of guild.channels.cache) {
 					const id = channel.parent?.id;
-					if (id === activeCategoryId) {
-						active.push(channel);
-					}
-					else if (id === inactiveCategoryId) {
-						inactive.push(channel);
+					if (!channel.isThread()) {
+						if (id === activeCategoryId) {
+							active.push(channel);
+						}
+						else if (id === inactiveCategoryId) {
+							inactive.push(channel);
+						}
 					}
 				}
 				const sortGroup = (group: Discord.GuildChannel[]) => {
