@@ -9,7 +9,7 @@ const splitDifference = (larger: number, smaller: number) => {
 	return split;
 };
 
-const REQUIRED_CHANNELS = 3;
+export const REQUIRED_CHANNELS = 3;
 
 const colorScaler = tf.scalar(1/255);
 
@@ -50,13 +50,13 @@ export const preprocessImage = async (image: Image | string, inputShape: tf.Shap
 	return tf.tidy(() => tf.tensor3d(buffer, [inputWidth, inputHeight, REQUIRED_CHANNELS], "float32").mul(colorScaler));
 };
 
-export const createModel = (inputWidth: number, inputHeight: number) => {
+export const createDefaultModel = (inputWidth: number, inputHeight: number) => {
 	const inputShape: tf.Shape = [inputWidth, inputHeight, REQUIRED_CHANNELS];
 	const model = tf.sequential();
 	model.add(tf.layers.conv2d({
 		inputShape: inputShape,
-		kernelSize: 5,
-		filters: 8,
+		kernelSize: 10,
+		filters: 10,
 		strides: 1,
 		activation: "relu",
 		kernelInitializer: "varianceScaling"

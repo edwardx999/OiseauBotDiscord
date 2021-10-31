@@ -11,7 +11,7 @@ export const isScoreImage = async (url: string, catchHandler?: (err: any) => any
         if (model === null) {
             const tmodel = await tf.loadLayersModel(`file://${__dirname}/score_classifier_model/model.json`);
             const tshape = (tmodel.layers[0].input as tf.SymbolicTensor).shape;
-            if (tshape[0] !== null || tshape[3] !== 3) {
+            if (tshape[0] !== null || tshape[3] !== classify.REQUIRED_CHANNELS) {
                 throw new Error("Invalid model input shape");
             }
             model = tmodel;
@@ -23,6 +23,7 @@ export const isScoreImage = async (url: string, catchHandler?: (err: any) => any
         const fixedInput = await classify.preprocessImage(input, inputShape);
         const result = model.predict(tf.expandDims(fixedInput)) as tf.Tensor;
         const resultValue = (await result.data())[0];
+        console.log(`${url} has probability ${resultValue} of being a score image`);
         return resultValue > 0.5;
     } catch (err) {
         if (catchHandler) {

@@ -10,4 +10,5 @@ token.txt
 data
 training
 models
+models_*
 score_classifier_model
