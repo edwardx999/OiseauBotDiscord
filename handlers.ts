@@ -111,17 +111,32 @@ function normalizeUppercase(str: string) {
 	return str.normalize("NFC").toUpperCase();
 }
 
-function noRoleExistReponse(message: Discord.Message, roleName: string) {
+function noRoleExistReponse(message: Discord.Message, roleName: string, doWithRole: (role: Discord.Role) => any) {
 	const rank = message.guild.me.roles.highest.position;
-	const roles = message.guild.roles.cache.filter(role => role.position < rank && !role.name.startsWith("@"));
+	const roles = Array.from(message.guild.roles.cache.filter(role => role.position < rank && !role.name.startsWith("@")).values());
 	const rolesNormalized = roles.map(role => normalizeUppercase(role.name));
 	const desiredNormalized = normalizeUppercase(roleName);
 	const nearest = StringSimilarity.findBestMatch(desiredNormalized, rolesNormalized);
-	deleteExtraneous(message);
-	const response = nearest.bestMatchIndex < rolesNormalized.length && nearest.bestMatch.rating > 0 ?
-		`<@${message.author.id}>, the role ${roleName} does not exist. Did you mean ${roles[nearest.bestMatchIndex].name}?` :
-		`<@${message.author.id}>, the role ${roleName} does not exist`;
-	return message.channel.send(response).catch(catchHandler).then(message => { if (message) { deleteExtraneous(message); } });
+	if (nearest.bestMatchIndex < rolesNormalized.length && nearest.bestMatch.rating > 0) {
+		message.reply(`The role ${roleName} does not exist. Did you mean ${roles[nearest.bestMatchIndex].name}?`)
+			.then(response => {
+				response.react("🇾").catch(catchHandler);
+				const filter = (reaction: Discord.MessageReaction, user: Discord.User) => {
+					return reaction.emoji.name === "🇾" && user.id === message.author.id;
+				};
+				response.awaitReactions({ filter, max: 1, time: 10000 }).then((collected) => {
+					if (collected.size >= 1) {
+						doWithRole(roles[nearest.bestMatchIndex]);
+					} else {
+						message.delete().catch(catchHandler);
+						response.delete().catch(catchHandler);
+					}
+				}, catchHandler);
+			});
+	}
+	else {
+		return message.reply(`The role ${roleName} does not exist`);
+	}
 }
 
 function findRole(roles: Discord.RoleManager, roleName: string) {
@@ -183,7 +198,7 @@ const roleCommandHelper = (message: Discord.Message, commandToken: string, doWit
 		doWithRole(role);
 	}
 	else {
-		noRoleExistReponse(message, desiredRoleName);
+		noRoleExistReponse(message, desiredRoleName, doWithRole);
 	}
 };
 
@@ -581,7 +596,7 @@ const cacheGet = async (key: string) => {
 	}
 };
 
-const cachePut = async (key: string, data: any) => {
+const cachePut = (key: string, data: any) => {
 	return Cache.put(storagePath, key, JSON.stringify(data));
 }
 
@@ -634,6 +649,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 		}
 		return;
 	}
+	const userTrashcan = (output: Discord.Message) => addTrashCan(output, message.author.id);
 	const args = quoteTokenize(pastFirstToken(message.content, commandToken));
 	const attachments: string[] = [];
 	for (const attachment of message.attachments) {
@@ -652,7 +668,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 			if (match) {
 				const index = match[2] ? +match[2] : 0;
 				if (!(await getLast(attachments, message, index))) {
-					message.channel.send("Failed to retrieve last request").catch(catchHandler);
+					message.channel.send("Failed to retrieve last request").then(userTrashcan, catchHandler);
 					return;
 				}
 			}
@@ -666,12 +682,12 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 			}
 		}
 		if (!foundCommands) {
-			message.channel.send("No commands given").catch(catchHandler);
+			message.channel.send("No commands given").then(userTrashcan, catchHandler);
 			return;
 		}
 	}
 	if (attachments.length == 0) {
-		message.channel.send("You have nothing to process").catch(catchHandler);
+		message.channel.send("You have nothing to process").then(userTrashcan, catchHandler);
 		return;
 	}
 	try {
@@ -679,7 +695,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 		const output = result.sprocOutput.trim();
 		if (output.length != 0) {
 			try {
-				await message.channel.send(output);
+				userTrashcan(await message.channel.send(output));
 			} catch (ex) {
 				catchHandler(ex);
 			}
@@ -692,13 +708,14 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 				for (const attachment of sent.attachments) {
 					responses.push(attachment[1].url);
 				}
+				userTrashcan(sent);
 			}
 			catch (error) {
 				if (error instanceof Discord.DiscordAPIError) {
 					try {
 						const attachmentTooLarge = 40005;
 						const errorMessage = error.code === attachmentTooLarge ? "(Result too large)" : `Error: ${error.message}`;
-						await message.channel.send(errorMessage);
+						userTrashcan(await message.channel.send(errorMessage));
 					} catch (ex) {
 						catchHandler(ex);
 					}
@@ -946,9 +963,9 @@ const react: CommandFunction = async (message, commandToken, bot) => {
 				const guild = bot.guilds.cache.get(messageInfo.guild);
 				if (guild) {
 					const channel = guild.channels.cache.get(messageInfo.channel);
-					if (channel && channel.type === "GUILD_TEXT" && guild.me.permissionsIn(channel).has("ADD_REACTIONS")) {
+					if (channel && channel.isText() && guild.me.permissionsIn(channel).has("ADD_REACTIONS")) {
 						try {
-							const message = await (channel as Discord.TextChannel).messages.fetch(messageInfo.message);
+							const message = await channel.messages.fetch(messageInfo.message);
 							message.react(emoji).catch(catchHandler);
 						} catch (err) {
 							catchHandler(err);
@@ -1086,10 +1103,53 @@ const resetGuessScoreRole: CommandFunction = (message, commandToken, bot) => {
 	}
 };
 
+const unpinAll = async (channel: Discord.TextChannel) => {
+	const pinned = await channel.messages.fetchPinned();
+	const toWait: Promise<any>[] = [];
+	pinned.forEach(message => toWait.push(message.unpin().catch(catchHandler)));
+	await Promise.all(toWait);
+};
+
+const setPin = async (message: Discord.Message) => {
+	await unpinAll(message.channel as Discord.TextChannel);
+	await message.pin().catch(catchHandler);
+};
+
+const checkSelfReference = async (message: Discord.Message) => {
+	const reply = message.reference;
+	if (reply) {
+		const referenced = await message.channel.messages.fetch(reply.messageId);
+		if (referenced && referenced.author.id === message.author.id) {
+			return referenced;
+		}
+	}
+	return null;
+}
+
+const checkHasScoreGuestRole = async (guild: Discord.Guild, user: Discord.User) => {
+	const role = await getGuessScoreRole(guild.id);
+	const author = await guild.members.fetch(user);
+	return author.roles.cache.has(role);
+};
+
+const setPinHelp = async (message: Discord.Message, useRole: boolean) => {
+	const reference = await checkSelfReference(message);
+	if (reference) {
+		guessScoreHandler(reference, useRole);
+	}
+}
+
+const normalSetPin: CommandFunction = (message) => {
+	return setPinHelp(message, true);
+};
+
+const idiotsSetPin: CommandFunction = async (message) => {
+	return setPinHelp(message, false);
+};
+
 const guessScoreHandler = async (message: Discord.Message, useRole: boolean) => {
 	if (message.channel.type == "GUILD_TEXT") {
-		const guessHostRole = useRole ? await getGuessScoreRole(message.guild.id) : undefined;
-		if (guessHostRole === undefined || (await message.guild.members.fetch(message.author)).roles.cache.has(guessHostRole)) {
+		if (!useRole || checkHasScoreGuestRole(message.guild, message.author)) {
 			const attachments = message.attachments;
 			try {
 				if (attachments.size > 0) {
@@ -1103,12 +1163,10 @@ const guessScoreHandler = async (message: Discord.Message, useRole: boolean) => 
 						case "image/webp":
 							break;
 						default:
-							return;
+							return false;
 					}
-					(message.channel as Discord.TextChannel).messages.fetchPinned().then(pinned => {
-						pinned.forEach(value => value.unpin().catch(catchHandler));
-						message.pin().catch(catchHandler);
-					}, catchHandler);
+					setPin(message);
+					return true;
 				}
 			} catch (err) {
 				catchHandler(err);
@@ -1117,26 +1175,38 @@ const guessScoreHandler = async (message: Discord.Message, useRole: boolean) => 
 	}
 };
 
-const stealScoreGuessHost: CommandFunction = async (message, token, bot) => {
+const stealScoreGuessHost = async (message: Discord.Message, token, bot, wrapMessage?: (string) => string | Discord.MessagePayload | Discord.MessageOptions) => {
 	const guild = message.guild;
 	const guildId = guild.id;
 	const guessHostRole = await getGuessScoreRole(guildId);
-	if (guessHostRole) {
-		const users = guild.roles.resolve(guessHostRole);
-		let alert = "";
-		for (const [_, user] of users.members) {
-			try {
-				await guild.members.fetch(user).then(user => user.roles.remove(guessHostRole), catchHandler);
-			} catch (err) {
-				catchHandler(err);
-			}
-			alert += user.toString();
-		}
-		guild.members.fetch(message.author).then(user => user.roles.add(guessHostRole), catchHandler).catch(catchHandler);
-		alert += `\n${message.author} has taken score guess host role`;
-		message.channel.send(alert).catch(catchHandler);
+	if (!guessHostRole) {
+		return;
 	}
+	const users = await guild.roles.fetch(guessHostRole);
+	if (!users) {
+		return;
+	}
+	let alert = "";
+	for (const [_, user] of users.members) {
+		try {
+			await guild.members.fetch(user).then(user => user.roles.remove(guessHostRole), catchHandler);
+		} catch (err) {
+			catchHandler(err);
+		}
+		alert += user.toString();
+	}
+	guild.members.fetch(message.author).then(user => user.roles.add(guessHostRole), catchHandler).catch(catchHandler);
+	alert += `\n${message.author} has taken score guess host role`;
+	message.channel.send(wrapMessage ? wrapMessage(alert) : alert).catch(catchHandler);
+
 };
+
+const stijlScoreGuessHost: CommandFunction = async (message, token, bot) => {
+	return stealScoreGuessHost(message, token, bot, (text) => {
+		return { content: text + " 😎", files: [new Discord.MessageAttachment("./stijl.mp3")] };
+	});
+};
+
 
 let alreadyGuessedBanList: Set<UserId> = undefined;
 const alreadyGuessedBanStorageKey = "alreadyGuessedBan";
@@ -1290,11 +1360,12 @@ const commands: Record<string, Record<string, Command>> = {
 		"roles": { command: listRoles, explanation: "List the roles I can give", usage: "$COMMAND_TOKEN$" }
 	},
 	"guess-the-score": {
-		"steal": {
-			command: stealScoreGuessHost,
-			explanation: "Take score guess host role by force",
-			usage: "$COMMAND_TOKEN$"
-		}
+		"steal": { command: stealScoreGuessHost, explanation: "Take score guess host role by force", usage: "$COMMAND_TOKEN$" },
+		"stijl": { command: stijlScoreGuessHost, explanation: "More cool way to steal", usage: "$COMMAND_TOKEN$" },
+		"set-pin": { command: normalSetPin, explanation: "Pin a message with an image for the game", usage: "Reply to message to pin, $COMMAND_TOKEN$" }
+	},
+	"guess-the-score-for-idiots": {
+		"set-pin": { command: idiotsSetPin, explanation: "Pin a message with an image for the game", usage: "Reply to message to pin, $COMMAND_TOKEN$" }
 	}
 };
 
@@ -1411,7 +1482,7 @@ const installHandlers = async (bot: Discord.Client) => {
 		if (message.author.id === bot.user.id) {
 			return;
 		}
-		if (message.channel.type === "GUILD_TEXT" && hasChannelPermission(message, "SEND_MESSAGES")) {
+		if (message.channel.isText() && hasChannelPermission(message, "SEND_MESSAGES")) {
 			const channel = message.channel as Discord.TextChannel;
 			const flag = commandFlag(message);
 			const firstWord = firstToken(message.content);
@@ -1463,8 +1534,8 @@ const installHandlers = async (bot: Discord.Client) => {
 		if (ref) {
 			try {
 				const reffedChannel = bot.guilds.cache.get(ref.guildId)?.channels.cache.get(ref.channelId);
-				if (reffedChannel?.type === "GUILD_TEXT") {
-					const reffedMessage = await (reffedChannel as Discord.TextChannel).messages.fetch(ref.messageId);
+				if (reffedChannel?.isText()) {
+					const reffedMessage = await reffedChannel.messages.fetch(ref.messageId);
 					if (reffedMessage) {
 						return [reffedMessage.author];
 					}
@@ -1498,7 +1569,7 @@ const installHandlers = async (bot: Discord.Client) => {
 						.setTitle("Ghost Ping")
 						.addFields(
 							{ name: "User", value: deleted.author ? deleted.author.toString() : "<Failed to find author>" },
-							{ name: "Message", value: deleted.content ? deleted.content.toString() : "<Failed to find author>" },
+							{ name: "Message", value: deleted.content ? deleted.content.toString() : "<Failed to find message>" },
 							{ name: "Channel", value: deleted.channel ? deleted.channel.toString() : "<Failed to find author>" })
 						.setTimestamp();
 					if (referenced != undefined) {
