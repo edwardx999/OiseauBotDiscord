@@ -1162,10 +1162,8 @@ const guessScoreHandler = async (message: Discord.Message, useRole: boolean, aiC
 						case "image/png":
 						case "image/jpeg":
 						case "image/webp":
-							if (aiCheck) {
-								if (!(await isScoreImage(url, catchHandler))) {
-									return false;
-								}
+							if (aiCheck && !(await isScoreImage(url, catchHandler))) {
+								return false;
 							}
 							break;
 						default:
@@ -1328,12 +1326,12 @@ const commands: Record<string, Record<string, Command>> = {
 		},
 		"set-score-guess-role": {
 			command: setGuessScoreRole,
-			explanation: "Sets a role to be the one given to the person hosting the guess the score game",
+			explanation: "Sets a role to be the one given to the person hosting the guess the score game (requires admin)",
 			usage: "$COMMAND_TOKEN$ role"
 		},
 		"reset-score-guess-role": {
 			command: resetGuessScoreRole,
-			explanation: "A role will no longer be assigned to the score guess host",
+			explanation: "A role will no longer be assigned to the score guess host (requires admin)",
 			usage: "$COMMAND_TOKEN$"
 		},
 		"timestamp": {
@@ -1368,10 +1366,10 @@ const commands: Record<string, Record<string, Command>> = {
 	"guess-the-score": {
 		"steal": { command: stealScoreGuessHost, explanation: "Take score guess host role by force", usage: "$COMMAND_TOKEN$" },
 		"stijl": { command: stijlScoreGuessHost, explanation: "More cool way to steal", usage: "$COMMAND_TOKEN$" },
-		"set-pin": { command: normalSetPin, explanation: "Pin a message with an image for the game", usage: "Reply to message to pin, $COMMAND_TOKEN$" }
+		"set-pin": { command: normalSetPin, explanation: "Pin your message with an image for the game", usage: "Reply to your message to pin, $COMMAND_TOKEN$" }
 	},
 	"guess-the-score-for-idiots": {
-		"set-pin": { command: idiotsSetPin, explanation: "Pin a message with an image for the game", usage: "Reply to message to pin, $COMMAND_TOKEN$" }
+		"set-pin": { command: idiotsSetPin, explanation: "Pin your message with an image for the game", usage: "Reply to your message to pin, $COMMAND_TOKEN$" }
 	}
 };
 
