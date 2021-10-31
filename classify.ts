@@ -47,7 +47,7 @@ export const preprocessImage = async (image: Image | string, inputShape: tf.Shap
 	// await fixedImage.clone().png().toFile("test_output.png");
 	const buffer = await fixedImage.raw().toBuffer(); // order x, y, channel
 	
-	return tf.tensor3d(buffer, [inputWidth, inputHeight, REQUIRED_CHANNELS], "float32").mul(colorScaler);
+	return tf.tidy(() => tf.tensor3d(buffer, [inputWidth, inputHeight, REQUIRED_CHANNELS], "float32").mul(colorScaler));
 };
 
 export const createModel = (inputWidth: number, inputHeight: number) => {
