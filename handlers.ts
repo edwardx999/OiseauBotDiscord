@@ -11,6 +11,7 @@ import * as Lily from "./lilypond";
 import * as Godbolt from "./godbolt";
 import * as fetch from "node-fetch";
 import { setInterval } from "timers";
+import { isScoreImage } from "./classify_score";
 
 type CommandFunction = (message: Discord.Message, commandToken: string, bot: Discord.Client) => any;
 
@@ -1147,7 +1148,7 @@ const idiotsSetPin: CommandFunction = async (message) => {
 	return setPinHelp(message, false);
 };
 
-const guessScoreHandler = async (message: Discord.Message, useRole: boolean) => {
+const guessScoreHandler = async (message: Discord.Message, useRole: boolean, aiCheck?: boolean) => {
 	if (message.channel.type == "GUILD_TEXT") {
 		if (!useRole || await checkHasScoreGuestRole(message.guild, message.author)) {
 			const attachments = message.attachments;
@@ -1161,6 +1162,11 @@ const guessScoreHandler = async (message: Discord.Message, useRole: boolean) => 
 						case "image/png":
 						case "image/jpeg":
 						case "image/webp":
+							if (aiCheck) {
+								if (!(await isScoreImage(url, catchHandler))) {
+									return false;
+								}
+							}
 							break;
 						default:
 							return false;
@@ -1522,7 +1528,7 @@ const installHandlers = async (bot: Discord.Client) => {
 						guessScoreHandler(message, true);
 					} break;
 					case "guess-the-score-for-idiots": {
-						guessScoreHandler(message, false);
+						guessScoreHandler(message, false, true);
 					} break;
 				}
 			}
