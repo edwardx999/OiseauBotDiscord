@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as fetch from "node-fetch";
-import { createTempDir, pathSeparator, spawnTimeout } from "./util";
+import { createTempDir, pathSeparator, spawnTimeout, saveToFile } from "./util";
 
 export { Result, execute, cleanup }
 
@@ -31,16 +31,7 @@ async function execute(fileUrls: string[], commands: string[], timeoutMs?: numbe
 						throw `Unsupported file type "${type}"`;
 				}
 			})();
-			const fileStream = fs.createWriteStream(path);
-			await new Promise<void>((resolve, reject) => {
-				request.body.pipe(fileStream);
-				request.body.on("error", err => {
-					reject(err);
-				});
-				fileStream.on("finish", async () => {
-					resolve();
-				});
-			});
+			await saveToFile(request.body, path);
 		}
 		const outputPath = tempFolder + pathSeparator + "output";
 		await fs.promises.mkdir(outputPath);
@@ -54,11 +45,11 @@ async function execute(fileUrls: string[], commands: string[], timeoutMs?: numbe
 		const outputFiles = (await fs.promises.readdir(outputPath)).map(filename => outputPath + pathSeparator + filename).sort();
 		return { filePaths: outputFiles, folder: tempFolder, sprocOutput: output.stdout };
 	} catch (e) {
-		await fs.promises.rmdir(tempFolder, { recursive: true });
+		await fs.promises.rm(tempFolder, { recursive: true, force: true });
 		throw e;
 	}
 }
 
 async function cleanup(result: Result) {
-	return await fs.promises.rmdir(result.folder, { recursive: true });
+	return await fs.promises.rm(result.folder, { recursive: true, force: true });
 }

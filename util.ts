@@ -4,7 +4,7 @@ import * as os from "os";
 import * as cp from "child_process";
 
 
-export { createTempDir, pathSeparator, spawnTimeout, SpawnResult, makeCallOnce };
+export { createTempDir, pathSeparator, spawnTimeout, SpawnResult, makeCallOnce, saveToFile };
 
 const tmpDir = os.tmpdir();
 
@@ -68,3 +68,16 @@ function makeCallOnce<T>(callback: (resolve: (value?: T | PromiseLike<T>) => voi
 		}
 	};
 }
+
+const saveToFile = (from: NodeJS.ReadableStream, path: string) => {
+	const fileStream = fs.createWriteStream(path);
+	return new Promise<void>((resolve, reject) => {
+		from.pipe(fileStream);
+		from.on("error", err => {
+			reject(err);
+		});
+		fileStream.on("finish", async () => {
+			resolve();
+		});
+	});
+};
