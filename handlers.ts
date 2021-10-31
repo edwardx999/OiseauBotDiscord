@@ -1149,7 +1149,7 @@ const idiotsSetPin: CommandFunction = async (message) => {
 
 const guessScoreHandler = async (message: Discord.Message, useRole: boolean) => {
 	if (message.channel.type == "GUILD_TEXT") {
-		if (!useRole || checkHasScoreGuestRole(message.guild, message.author)) {
+		if (!useRole || await checkHasScoreGuestRole(message.guild, message.author)) {
 			const attachments = message.attachments;
 			try {
 				if (attachments.size > 0) {
