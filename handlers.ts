@@ -1216,7 +1216,7 @@ const guessScoreHandler = async (message: Discord.Message, useRole: boolean, aiC
 	}
 };
 
-const stealScoreGuessHost = async (message: Discord.Message, token, bot, wrapMessage?: (string) => string | Discord.MessagePayload | Discord.MessageOptions) => {
+const stealScoreGuessHost = async (message: Discord.Message, token, bot, wrapMessage?: (message: string) => string | Discord.MessagePayload | Discord.MessageOptions) => {
 	const guild = message.guild;
 	const guildId = guild.id;
 	const guessHostRole = await getGuessScoreRole(guildId);
