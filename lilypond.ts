@@ -113,7 +113,7 @@ ${lilyCode}
 };
 
 const cleanup = (result: Result) => {
-	return fs.promises.rmdir(result.folder, { recursive: true });
+	return fs.promises.rm(result.folder, { recursive: true, force: true });
 };
 
 const getGlob = (pattern: string) => {
