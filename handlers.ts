@@ -28,6 +28,7 @@ interface Command {
 }
 
 type GuildId = string;
+type ChannelId = string;
 type UserId = string;
 
 let commandFlags: Record<GuildId, string> = {};
@@ -1109,10 +1110,26 @@ const unpinAll = async (channel: Discord.TextChannel) => {
 	const toWait: Promise<any>[] = [];
 	pinned.forEach(message => toWait.push(message.unpin().catch(catchHandler)));
 	await Promise.all(toWait);
+	return pinned;
+};
+
+
+const pinHistory: Record<ChannelId, MessageId[][]> = {}
+
+const addToPinHistory = (channel: Discord.TextChannel, messages: MessageId[]) => {
+	const channelHistory = pinHistory[channel.id] || (pinHistory[channel.id] = []);
+	const historyLimit = 20;
+	channelHistory.push(messages);
+	if (channelHistory.length > historyLimit) {
+		const toErase = 10;
+		channelHistory.splice(0, toErase);
+	}
 };
 
 const setPin = async (message: Discord.Message) => {
-	await unpinAll(message.channel as Discord.TextChannel);
+	const channel = message.channel as Discord.TextChannel;
+	const pinned = await unpinAll(channel);
+	addToPinHistory(channel, pinned.map(msg => msg.id));
 	await message.pin().catch(catchHandler);
 };
 
@@ -1146,6 +1163,26 @@ const normalSetPin: CommandFunction = (message) => {
 
 const idiotsSetPin: CommandFunction = async (message) => {
 	return setPinHelp(message, false);
+};
+
+const idiotsUndoPin: CommandFunction = async (message) => {
+	const channel = message.channel as Discord.TextChannel;
+	await unpinAll(channel);
+	const history = pinHistory[channel.id];
+	if (history) {
+		const toPin = history.pop();
+		if (toPin) {
+			const pinning = toPin.map(async (msgId) => {
+				try {
+					const msgToPin = await channel.messages.fetch(msgId);
+					await msgToPin.pin();
+				} catch (err) {
+					catchHandler(err);
+				}
+			});
+			await Promise.all(pinning);
+		}
+	}
 };
 
 const guessScoreHandler = async (message: Discord.Message, useRole: boolean, aiCheck?: boolean) => {
@@ -1211,6 +1248,13 @@ const stijlScoreGuessHost: CommandFunction = async (message, token, bot) => {
 	});
 };
 
+const badSteal: CommandFunction = (message, token, bot) => {
+	const emoji = findEmoji("hammer_sickle", bot);
+	if (emoji !== undefined) {
+		message.react(emoji).catch(catchHandler);
+	}
+};
+
 
 let alreadyGuessedBanList: Set<UserId> = undefined;
 const alreadyGuessedBanStorageKey = "alreadyGuessedBan";
@@ -1268,6 +1312,25 @@ const getTimeSince: CommandFunction = async (message, token, bot) => {
 	if (date) {
 		const time = (new Date()).getTime() - date.getTime();
 		message.channel.send(toHms(time)).catch(catchHandler);
+	}
+};
+
+let _messageHandler: (message: Discord.Message) => void;
+
+const reeval: CommandFunction = async (message, token, bot) => {
+	try {
+		if (message.author.id === "243542213227708416") {
+			const arg = pastFirstToken(message.content, token).trim();
+			const match = parseMessageLink(arg);
+			if (match) {
+				const guild = await bot.guilds.fetch(match.guild);
+				const channel = await guild.channels.fetch(match.channel);
+				const message = await (channel as Discord.TextChannel).messages.fetch(match.message);
+				_messageHandler(message);
+			}
+		}
+	} catch (err) {
+		catchHandler(err);
 	}
 };
 
@@ -1349,6 +1412,12 @@ const commands: Record<string, Record<string, Command>> = {
 			explanation: "",
 			usage: "",
 			hidden: true
+		},
+		"reeval": {
+			command: reeval,
+			explanation: "",
+			usage: "",
+			hidden: true
 		}
 	},
 	"bot-spam": {
@@ -1369,7 +1438,9 @@ const commands: Record<string, Record<string, Command>> = {
 		"set-pin": { command: normalSetPin, explanation: "Pin your message with an image for the game", usage: "Reply to your message to pin, $COMMAND_TOKEN$" }
 	},
 	"guess-the-score-for-idiots": {
-		"set-pin": { command: idiotsSetPin, explanation: "Pin your message with an image for the game", usage: "Reply to your message to pin, $COMMAND_TOKEN$" }
+		"set-pin": { command: idiotsSetPin, explanation: "Pin your message with an image for the game", usage: "Reply to your message to pin, $COMMAND_TOKEN$" },
+		"undo-pin": { command: idiotsUndoPin, explanation: "Undoes the last pinning", usage: "$COMMAND_TOKEN$" },
+		"steal": { command: badSteal, explanation: "", usage: "", hidden: true }
 	}
 };
 
@@ -1532,7 +1603,7 @@ const installHandlers = async (bot: Discord.Client) => {
 			}
 		}
 	};
-
+	_messageHandler = messageHandler;
 	const findReferenced = async (message: Deletable) => {
 		const ref = message.reference;
 		if (ref) {
