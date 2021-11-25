@@ -9,9 +9,27 @@ const splitDifference = (larger: number, smaller: number) => {
 	return split;
 };
 
-export const REQUIRED_CHANNELS = 3;
+export const enum PreprocessMode {
+	grayscale = 1,
+	normal = 3,
+	gradBrightness = 4,
 
-const colorScaler = tf.scalar(1/255);
+};
+
+export const preprocessModeChannels = (mode: PreprocessMode): number => {
+	return mode;
+}
+
+export const preprocessModeFromChannels = (channels: number): PreprocessMode => {
+	switch (channels) {
+		case PreprocessMode.normal:
+		case PreprocessMode.gradBrightness:
+			return channels;
+	}
+	throw new Error("Invalid number of channels");
+}
+
+const colorScaler = tf.scalar(1 / 255);
 
 export const preprocessImage = async (image: Image | string, inputShape: tf.Shape) => {
 	if (typeof image === "string") {
@@ -20,10 +38,7 @@ export const preprocessImage = async (image: Image | string, inputShape: tf.Shap
 	const inputWidth = inputShape[0];
 	const inputHeight = inputShape[1];
 	const inputRatio = inputShape[0] / inputShape[1];
-	const inputChannels = inputShape[2];
-	if (inputChannels !== REQUIRED_CHANNELS) {
-		throw new Error(`${REQUIRED_CHANNELS} layer shape needed`);
-	}
+	const inputChannels = preprocessModeFromChannels(inputShape[2]);
 
 	const imageMetadata = await image.metadata();
 	const imageRatio = imageMetadata.width / imageMetadata.height;
@@ -43,19 +58,51 @@ export const preprocessImage = async (image: Image | string, inputShape: tf.Shap
 		height: inputHeight,
 		fit: "fill",
 		kernel: "cubic"
-	}).removeAlpha().toColorspace("srgb");
+	}).removeAlpha();
 	// await fixedImage.clone().png().toFile("test_output.png");
-	const buffer = await fixedImage.raw().toBuffer(); // order x, y, channel
-	
-	return tf.tidy(() => tf.tensor3d(buffer, [inputWidth, inputHeight, REQUIRED_CHANNELS], "float32").mul(colorScaler));
+	switch (inputChannels) {
+		case PreprocessMode.grayscale:
+		{
+			const buffer = await fixedImage.grayscale().raw().toBuffer(); // order x, y, channel
+			return tf.tidy(() => tf.tensor3d(buffer, [inputWidth, inputHeight, inputChannels], "float32").mul(colorScaler));
+		}
+		case PreprocessMode.normal:
+		{
+			const buffer = await fixedImage.toColorspace("srgb").raw().toBuffer(); // order x, y, channel
+			return tf.tidy(() => tf.tensor3d(buffer, [inputWidth, inputHeight, inputChannels], "float32").mul(colorScaler));
+		}
+		case PreprocessMode.gradBrightness:
+		{
+			const imagePromise = fixedImage.clone().toColorspace("srgb").raw().toBuffer();
+			const brightnessPromise = fixedImage.clone().grayscale().raw().toBuffer();
+			const image = await imagePromise;
+			const brightness = await brightnessPromise;
+			// sobel in sharp doesn't work because of negative truncation or something
+			return tf.tidy(()=>{
+				const imageTensor = tf.tensor3d(image, [inputWidth, inputHeight, 3], "float32").mul(colorScaler);
+				const brightnessTensor = tf.tensor3d(brightness, [inputWidth, inputHeight, 1], "float32").mul(colorScaler);
+				const offsetBrightnessTensor = tf.split(brightnessTensor, [1, inputHeight - 1], 0)[1] as tf.Tensor3D;
+				const cutoffBrightnessTenor = tf.split(brightnessTensor, [inputHeight - 1, 1], 0)[0] as tf.Tensor3D;
+				const gradientTensor = tf.abs(tf.sub(cutoffBrightnessTenor, offsetBrightnessTensor).pad([[0, 1], [0, 0], [0, 0]], 0));
+				return tf.concat([imageTensor, gradientTensor], 2);
+			});
+		}
+	}
+
 };
 
-export const createDefaultModel = (inputWidth: number, inputHeight: number) => {
-	const inputShape: tf.Shape = [inputWidth, inputHeight, REQUIRED_CHANNELS];
+// loss under 0.1 is okay, to try to avoid overfitting
+const tolerance = tf.scalar(0.1);
+const tolerantLoss = (gold: tf.Tensor, pred: tf.Tensor) => {
+	return tf.tidy(() => tf.relu(tf.losses.logLoss(gold, pred).sub(tolerance)));
+};
+
+export const createDefaultModel = (inputWidth: number, inputHeight: number, mode: PreprocessMode) => {
+	const inputShape: tf.Shape = [inputWidth, inputHeight, mode];
 	const model = tf.sequential();
 	model.add(tf.layers.conv2d({
 		inputShape: inputShape,
-		kernelSize: 10,
+		kernelSize: 9,
 		filters: 10,
 		strides: 1,
 		activation: "relu",
@@ -76,7 +123,8 @@ export const createDefaultModel = (inputWidth: number, inputHeight: number) => {
 	const optimizer = tf.train.adam();
 	model.compile({
 		optimizer: optimizer,
-		loss: "binaryCrossentropy",
+		// loss: "binaryCrossentropy",
+		loss: tolerantLoss,
 		metrics: ["accuracy"]
 	});
 	return {

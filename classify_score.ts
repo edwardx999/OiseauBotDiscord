@@ -11,9 +11,10 @@ export const isScoreImage = async (url: string, catchHandler?: (err: any) => any
         if (model === null) {
             const tmodel = await tf.loadLayersModel(`file://${__dirname}/score_classifier_model/model.json`);
             const tshape = (tmodel.layers[0].input as tf.SymbolicTensor).shape;
-            if (tshape[0] !== null || tshape[3] !== classify.REQUIRED_CHANNELS) {
+            if (tshape[0] !== null) {
                 throw new Error("Invalid model input shape");
             }
+            classify.preprocessModeFromChannels(tshape[3]);
             model = tmodel;
             inputShape = tshape.slice(1);
         }

@@ -8,17 +8,16 @@ console.log(`${positiveFiles.length} positive files`);
 console.log(`${pathologicalFiles.length} positive pathological files`);
 console.log(`${negativeFiles.length} negative files`);
 
-const { model, inputShape } = classify.createDefaultModel(200, 200);
+const { model, inputShape } = classify.createDefaultModel(300, 300, classify.PreprocessMode.gradBrightness);
 
-
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 200;
 
 const batchCache: Record<string, {label: tf.Tensor, image: tf.Tensor, dirty: boolean}> = {};
 const getBatch = async () => {
   const inputs: [tf.Tensor, tf.Tensor][] = [];
   _.shuffle(negativeFiles);
   _.shuffle(positiveFiles);
-  const NEG_RATIO = Math.random() / 4 + 0.25; 
+  const NEG_RATIO = Math.random() / 2 + 0.25; 
   const NEGATIVE_FILES = Math.min(Math.floor(NEG_RATIO * BATCH_SIZE), negativeFiles.length);
   const POSITIVE_FILES = BATCH_SIZE - NEGATIVE_FILES - pathologicalFiles.length;
   for(const path in batchCache) {
@@ -62,12 +61,15 @@ fs.mkdirSync(modelsPath, { recursive: true });
 
 const main = async () => {
   for (let i = 0; i < 1000; ++i) {
+    console.log(`${i}*********************************`);
     const [inputs, labels] = await getBatch();
     const h = await model.fit(inputs, labels, {
       batchSize: 10,
-      epochs: 4,
+      epochs: 2,
       shuffle: true
     });
+    inputs.dispose();
+    labels.dispose();
     const path = `${modelsPath}/${new Date().getTime()}`;
     fs.mkdirSync(path, { recursive: true });
     await model.save(`file://${path}`);
