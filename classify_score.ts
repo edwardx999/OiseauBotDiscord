@@ -21,7 +21,7 @@ export const isScoreImage = async (url: string, catchHandler?: (err: any) => any
         const request = await fetch.default(url);
         const buffer = await request.buffer();
         const input = Sharp(buffer);
-        const fixedInput = await classify.preprocessImage(input, inputShape);
+        const fixedInput = await classify.preprocessImage(input, inputShape, true);
         const result = model.predict(tf.expandDims(fixedInput)) as tf.Tensor;
         const resultValue = (await result.data())[0];
         console.log(`${url} has probability ${resultValue} of being a score image`);
@@ -29,7 +29,7 @@ export const isScoreImage = async (url: string, catchHandler?: (err: any) => any
     } catch (err) {
         if (catchHandler) {
             catchHandler(err);
-            return true;
+            return false;
         }
         throw err;
     }

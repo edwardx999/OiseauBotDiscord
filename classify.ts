@@ -31,27 +31,26 @@ export const preprocessModeFromChannels = (channels: number): PreprocessMode => 
 
 const colorScaler = tf.scalar(1 / 255);
 
-export const preprocessImage = async (image: Image | string, inputShape: tf.Shape) => {
-	if (typeof image === "string") {
-		image = sharp(image);
-	}
+export const preprocessImage = async (image: Image | string, inputShape: tf.Shape, trim: boolean = false) => {
+	const loadedImage = typeof image === "string" ? sharp(image) : image;
 	const inputWidth = inputShape[0];
 	const inputHeight = inputShape[1];
 	const inputRatio = inputShape[0] / inputShape[1];
 	const inputChannels = preprocessModeFromChannels(inputShape[2]);
 
-	const imageMetadata = await image.metadata();
-	const imageRatio = imageMetadata.width / imageMetadata.height;
+	const trimmedImage = trim ? sharp(await loadedImage.trim().png().toBuffer()) : loadedImage;
 
+	const imageMetadata = await trimmedImage.metadata();
+	const imageRatio = imageMetadata.width / imageMetadata.height;
 	const fixedImage = (() => {
 		if (imageRatio < inputRatio) { // image skinnier, must crop out top and bottom
 			const cropHeight = Math.ceil(imageMetadata.width / inputRatio);
 			const top = splitDifference(imageMetadata.height, cropHeight);
-			return image.extract({ left: 0, top: top, width: imageMetadata.width, height: top + cropHeight });
+			return trimmedImage.extract({ left: 0, top: top, width: imageMetadata.width, height: top + cropHeight });
 		} else {
 			const cropWidth = Math.ceil(imageMetadata.height * inputRatio);
 			const left = splitDifference(imageMetadata.width, cropWidth);
-			return image.extract({ left: left, top: 0, width: cropWidth, height: imageMetadata.height });
+			return trimmedImage.extract({ left: left, top: 0, width: cropWidth, height: imageMetadata.height });
 		}
 	})().resize({
 		width: inputWidth,
@@ -62,31 +61,31 @@ export const preprocessImage = async (image: Image | string, inputShape: tf.Shap
 	// await fixedImage.clone().png().toFile("test_output.png");
 	switch (inputChannels) {
 		case PreprocessMode.grayscale:
-		{
-			const buffer = await fixedImage.grayscale().raw().toBuffer(); // order x, y, channel
-			return tf.tidy(() => tf.tensor3d(buffer, [inputWidth, inputHeight, inputChannels], "float32").mul(colorScaler));
-		}
+			{
+				const buffer = await fixedImage.grayscale().raw().toBuffer(); // order x, y, channel
+				return tf.tidy(() => tf.tensor3d(buffer, [inputWidth, inputHeight, inputChannels], "float32").mul(colorScaler));
+			}
 		case PreprocessMode.normal:
-		{
-			const buffer = await fixedImage.toColorspace("srgb").raw().toBuffer(); // order x, y, channel
-			return tf.tidy(() => tf.tensor3d(buffer, [inputWidth, inputHeight, inputChannels], "float32").mul(colorScaler));
-		}
+			{
+				const buffer = await fixedImage.toColorspace("srgb").raw().toBuffer(); // order x, y, channel
+				return tf.tidy(() => tf.tensor3d(buffer, [inputWidth, inputHeight, inputChannels], "float32").mul(colorScaler));
+			}
 		case PreprocessMode.gradBrightness:
-		{
-			const imagePromise = fixedImage.clone().toColorspace("srgb").raw().toBuffer();
-			const brightnessPromise = fixedImage.clone().grayscale().raw().toBuffer();
-			const image = await imagePromise;
-			const brightness = await brightnessPromise;
-			// sobel in sharp doesn't work because of negative truncation or something
-			return tf.tidy(()=>{
-				const imageTensor = tf.tensor3d(image, [inputWidth, inputHeight, 3], "float32").mul(colorScaler);
-				const brightnessTensor = tf.tensor3d(brightness, [inputWidth, inputHeight, 1], "float32").mul(colorScaler);
-				const offsetBrightnessTensor = tf.split(brightnessTensor, [1, inputHeight - 1], 0)[1] as tf.Tensor3D;
-				const cutoffBrightnessTenor = tf.split(brightnessTensor, [inputHeight - 1, 1], 0)[0] as tf.Tensor3D;
-				const gradientTensor = tf.abs(tf.sub(cutoffBrightnessTenor, offsetBrightnessTensor).pad([[0, 1], [0, 0], [0, 0]], 0));
-				return tf.concat([imageTensor, gradientTensor], 2);
-			});
-		}
+			{
+				const imagePromise = fixedImage.clone().toColorspace("srgb").raw().toBuffer();
+				const brightnessPromise = fixedImage.clone().grayscale().raw().toBuffer();
+				const image = await imagePromise;
+				const brightness = await brightnessPromise;
+				// sobel in sharp doesn't work because of negative truncation or something
+				return tf.tidy(() => {
+					const imageTensor = tf.tensor3d(image, [inputWidth, inputHeight, 3], "float32").mul(colorScaler);
+					const brightnessTensor = tf.tensor3d(brightness, [inputWidth, inputHeight, 1], "float32").mul(colorScaler);
+					const offsetBrightnessTensor = tf.split(brightnessTensor, [1, inputHeight - 1], 0)[1] as tf.Tensor3D;
+					const cutoffBrightnessTenor = tf.split(brightnessTensor, [inputHeight - 1, 1], 0)[0] as tf.Tensor3D;
+					const gradientTensor = tf.abs(tf.sub(cutoffBrightnessTenor, offsetBrightnessTensor).pad([[0, 1], [0, 0], [0, 0]], 0));
+					return tf.concat([imageTensor, gradientTensor], 2);
+				});
+			}
 	}
 
 };
@@ -102,8 +101,8 @@ export const createDefaultModel = (inputWidth: number, inputHeight: number, mode
 	const model = tf.sequential();
 	model.add(tf.layers.conv2d({
 		inputShape: inputShape,
-		kernelSize: 9,
-		filters: 10,
+		kernelSize: 5,
+		filters: 8,
 		strides: 1,
 		activation: "relu",
 		kernelInitializer: "varianceScaling"
@@ -123,8 +122,8 @@ export const createDefaultModel = (inputWidth: number, inputHeight: number, mode
 	const optimizer = tf.train.adam();
 	model.compile({
 		optimizer: optimizer,
-		// loss: "binaryCrossentropy",
-		loss: tolerantLoss,
+		loss: "binaryCrossentropy",
+		//loss: tolerantLoss,
 		metrics: ["accuracy"]
 	});
 	return {
