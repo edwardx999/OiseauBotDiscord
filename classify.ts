@@ -1,3 +1,4 @@
+require("canvas"); // need this before sharp
 import * as sharp from "sharp";
 import * as tf from "@tensorflow/tfjs-node";
 

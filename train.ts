@@ -8,7 +8,7 @@ console.log(`${positiveFiles.length} positive files`);
 console.log(`${pathologicalFiles.length} positive pathological files`);
 console.log(`${negativeFiles.length} negative files`);
 
-const { model, inputShape } = classify.createDefaultModel(300, 300, classify.PreprocessMode.gradBrightness);
+const { model, inputShape } = classify.createDefaultModel(300, 300, classify.PreprocessMode.normal);
 
 const BATCH_SIZE = 200;
 
@@ -29,7 +29,7 @@ const getBatch = async () => {
       cached.dirty = true;
       inputs.push([cached.image, cached.label]);
     } else {
-      const image = await classify.preprocessImage(path, inputShape);
+      const image = await classify.preprocessImage(path, inputShape, true);
       const label = tf.scalar(labelVal);
       batchCache[path] = {
         image, label, dirty: true
@@ -65,7 +65,7 @@ const main = async () => {
     const [inputs, labels] = await getBatch();
     const h = await model.fit(inputs, labels, {
       batchSize: 10,
-      epochs: 2,
+      epochs: 4,
       shuffle: true
     });
     inputs.dispose();

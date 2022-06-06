@@ -1,4 +1,4 @@
-import { watch } from "fs";
+import { FSWatcher, watch } from "fs";
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
 import { glob } from "glob";
 import { abort, stderr, stdout } from "process";
@@ -15,32 +15,45 @@ spawnBot();
 
 const responder = (() => {
 	let killer: NodeJS.Timeout = null;
+	let files: string[] = [];
+	const warmupDelay = 5000;
+	const startupTime = Date.now();
 	const killDelay = 1000;
-	return () => {
+	return (filename: string) => {
+		if (Date.now() - startupTime < warmupDelay) {
+			console.log(`Ignoring early file change for ${filename}`);
+			return;
+		}
+		files.push(filename);
 		if (killer) {
 			clearTimeout(killer);
 		}
 		killer = setTimeout(() => {
-			console.log("File change detected");
+			files.sort();
+			console.log(`File change detected at ${files}`);
+			files = [];
 			child.kill();
 		}, killDelay);
 	};
 })();
+
+let dirWatcher: FSWatcher = null;
 
 glob("*.js", (error, matches) => {
 	if (error) {
 		console.error("Failed to find js files");
 		abort();
 	}
-	let watchers = matches.map(filename => watch(filename, responder));
-	const dirWatcher = watch(".", event => {
+	const makeWatcher = (filename: string) => watch(filename, () => responder(filename));
+	let watchers = matches.map(makeWatcher);
+	dirWatcher = watch(".", event => {
 		if (event === "rename") {
 			glob("*.js", (error, newMatches) => {
 				if (!error) {
 					if (matches.length != newMatches.length || (matches.sort(), newMatches.sort(), (matches.some((path, index) => path != newMatches[index])))) {
 						watchers.forEach(watcher => watcher.close());
-						responder();
-						watchers = matches.map(filename => watch(filename, responder));
+						responder("(directory change)");
+						watchers = matches.map(makeWatcher);
 					}
 				}
 			});
