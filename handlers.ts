@@ -10,15 +10,16 @@ import * as Cache from "cacache";
 import * as Lily from "./lilypond";
 import * as Godbolt from "./godbolt";
 import * as fetch from "node-fetch";
-import { setInterval } from "timers";
 import { isScoreImage } from "./classify_score";
+import { renderEms } from "./ems";
 
-type CommandFunction = (message: Discord.Message, commandToken: string, bot: Discord.Client) => any;
+type CommandFunction<T = any> = (message: Discord.Message, commandToken: string, bot: Discord.Client) => T;
 
 const catchHandler = (err: any) => {
 	console.error(new Date());
 	console.error(err);
 }
+
 
 interface Command {
 	command: CommandFunction;
@@ -30,6 +31,25 @@ interface Command {
 type GuildId = string;
 type ChannelId = string;
 type UserId = string;
+
+const useLimiter: Record<UserId, number[]> = {}
+
+const addUse = (user: Discord.User) => {
+	const maxUses = 3;
+	const maxUseTimeMs = 60 * 1000;
+	const time = new Date().getTime();
+	const uses = useLimiter[user.id] || (useLimiter[user.id] = []);
+	if (uses.length < maxUses) {
+		uses.push(time);
+		return true;
+	}
+	if (time - uses[0] > maxUseTimeMs) {
+		uses.shift();
+		uses.push(time);
+		return true;
+	}
+	return false;
+};
 
 let commandFlags: Record<GuildId, string> = {};
 const commandFlagPlaceholder = "!";
@@ -651,6 +671,11 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 		}
 		return;
 	}
+	if (!addUse(message.author)) {
+		console.log(`${new Date()} ${message.author.username}#${message.author.discriminator} sproc overuse`);
+		message.react("❌").catch(catchHandler);
+		return;
+	}
 	const userTrashcan = (output: Discord.Message) => addTrashCan(output, message.author.id);
 	const args = quoteTokenize(pastFirstToken(message.content, commandToken));
 	const attachments: string[] = [];
@@ -693,7 +718,7 @@ const execSproc: CommandFunction = async (message, commandToken) => {
 		return;
 	}
 	try {
-		const result = await Sproc.execute(attachments, args);
+		const result = await Sproc.execute(attachments, args, 10000);
 		const output = result.sprocOutput.trim();
 		if (output.length != 0) {
 			try {
@@ -750,11 +775,25 @@ const addTrashCan = (message: Discord.Message, userId: UserId) => {
 	const filter = (reaction: Discord.MessageReaction, user: Discord.User) => {
 		return reaction.emoji.name === "🗑️" && user.id === userId;
 	};
-	message.awaitReactions({ filter, max: 1, time: 300000 }).then((collected) => {
+	const waitTime = 300000;
+	message.awaitReactions({ filter, max: 1, time: waitTime }).then((collected) => {
 		if (collected.size >= 1) {
 			message.delete().catch(catchHandler);
+		} else {
+			message.reactions.resolve("🗑️").users.remove(message.guild.me);
 		}
 	}, () => { });
+};
+
+const sendErrorMsg = (message: Discord.Message, error: any) => {
+	const userTrashcan = (output: Discord.Message) => addTrashCan(output, message.author.id);
+	const errorMessage = `${error}`;
+	if (errorMessage.length > 1800) {
+		message.channel.send(`Error (Truncated): \`\`\`${errorMessage.substring(0, 1800)}\`\`\``).then(userTrashcan, catchHandler);
+	}
+	else {
+		message.channel.send(`Error: \`\`\`${errorMessage}\`\`\``).then(userTrashcan, catchHandler);
+	}
 };
 
 const execLilyHelp = async (message: Discord.Message, commandToken: string, codeWrapper?: (code: string) => string) => {
@@ -767,6 +806,11 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 	const userTrashcan = (output: Discord.Message) => addTrashCan(output, message.author.id);
 	const past = pastFirstToken(message.content, commandToken);
 	const codeBlock = endCodeBlockRegex.exec(past) || endCodeBlockRegex2.exec(past);
+	if (!addUse(message.author)) {
+		console.log(`${new Date()} ${message.author.username}#${message.author.discriminator} lily overuse`);
+		message.react("❌").catch(catchHandler);
+		return;
+	}
 	if (codeBlock) {
 		const codeText = codeBlock[1];
 		const args = tokenize(past.substring(0, codeBlock.index));
@@ -794,7 +838,7 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 				}
 				return ret;
 			})();
-			const result = await Lily.render(codeWrapper ? codeWrapper(codeText) : codeText, options);
+			const result = await Lily.render(codeWrapper ? codeWrapper(codeText) : codeText, options, 10000);
 			try {
 				const warningMessage = (() => {
 					let message = "";
@@ -841,15 +885,7 @@ const execLilyHelp = async (message: Discord.Message, commandToken: string, code
 			}
 		}
 		catch (error) {
-			if (hasChannelPermission(message, "SEND_MESSAGES")) {
-				const errorMessage = `${error}`;
-				if (errorMessage.length > 1800) {
-					message.channel.send(`Error (Truncated): \`\`\`${errorMessage.substring(0, 1800)}\`\`\``).then(userTrashcan, catchHandler);
-				}
-				else {
-					message.channel.send(`Error: \`\`\`${errorMessage}\`\`\``).then(userTrashcan, catchHandler);
-				}
-			}
+			sendErrorMsg(message, error);
 		}
 	}
 	else {
@@ -865,6 +901,39 @@ const execLilyBasic: CommandFunction = (message, commandToken) => {
 	return execLilyHelp(message, commandToken, (code) => {
 		return `\\score { << \\new Staff { ${code} } >> \\layout { } \\midi { }}`;
 	});
+};
+
+const execEms: CommandFunction = async (message, commandToken) => {
+	if (!hasChannelPermission(message, ["ATTACH_FILES", "SEND_MESSAGES"])) {
+		if (hasChannelPermission(message, "SEND_MESSAGES")) {
+			message.channel.send("I lack proper permissions in this channel").catch(catchHandler);
+		}
+		return;
+	}
+	if (!addUse(message.author)) {
+		console.log(`${new Date()} ${message.author.username}#${message.author.discriminator} ems overuse`);
+		message.react("❌").catch(catchHandler);
+		return;
+	}
+	const userTrashcan = (output: Discord.Message) => addTrashCan(output, message.author.id);
+	const past = pastFirstToken(message.content, commandToken);
+	const codeBlock = endCodeBlockRegex.exec(past) || endCodeBlockRegex2.exec(past);
+	const text = codeBlock ? codeBlock[1] : past.substring(1);
+	if (text.length == 0) {
+		message.channel.send("No EMS text found").then(userTrashcan, catchHandler);
+		return;
+	}
+	try {
+		const ems = renderEms(text);
+		const img = await new Promise<Buffer>((resolve, reject) => {
+			const timeout = setTimeout(() => reject("Timeout"), 10000);
+			ems.then((res) => { clearTimeout(timeout); resolve(res); }, reject);
+		});
+		const attachment = new Discord.MessageAttachment(img, "ems.png");
+		userTrashcan(await message.channel.send({ files: [attachment] }));
+	} catch (error) {
+		sendErrorMsg(message, error);
+	}
 };
 
 const noRolesMessage = "I can give you no roles";
@@ -886,11 +955,15 @@ const listRoles: CommandFunction = async (message) => {
 			}
 			return null;
 		}).filter(v => v != null).join("\n");
-	const response = list.length > 0 ?
-		(hasChannelPermission(message, "EMBED_LINKS") ?
-			{ embeds: [new Discord.MessageEmbed().setColor("#FEDCBA").addField("Roles I Can Give You", list)] } :
-			"**Roles I Can Give You**\n" + list) :
-		noRolesMessage;
+	const response = (() => {
+		if (list.length > 0) {
+			if (hasChannelPermission(message, "EMBED_LINKS") && list.length < 1000) {
+				return { embeds: [new Discord.MessageEmbed().setColor("#FEDCBA").addField("Roles I Can Give You", list)] };
+			}
+			return "**Roles I Can Give You**\n" + list;
+		}
+		return noRolesMessage;
+	})();
 	message.channel.send(response).catch(catchHandler);
 }
 
@@ -1012,16 +1085,16 @@ const execGodbolt: CommandFunction = async (message, commandToken) => {
 	if (codeBlock) {
 		const codeText = codeBlock[1];
 		const resp = await Godbolt.cppExec(codeText);
-		message.channel.send("```" + resp + "```").catch(catchHandler);
+		message.channel.send("```" + resp + "```").then((resp) => addTrashCan(resp, message.author.id), catchHandler);
 	}
 };
 
 const commandTokenVar = "$COMMAND_TOKEN$";
 
 const helpMessageCache: Record<string, Discord.MessageEmbed> = {};
-const helpMessage = (respondTo: Discord.Message) => {
+const helpMessage = (respondTo: Discord.Message, channelName?: string) => {
 	const prefix = commandFlag(respondTo);
-	let message = helpMessageCache[prefix];
+	let message = channelName === undefined ? helpMessageCache[prefix] : undefined;
 	if (message === undefined) {
 		message = new Discord.MessageEmbed()
 			.setColor("#ABCDEF")
@@ -1032,10 +1105,14 @@ const helpMessage = (respondTo: Discord.Message) => {
 				.map(([commandName, command]) => command.usage.replace(commandTokenVar, prefix + commandName))
 				.join("\n");
 		}
-		for (const channelName in commands) {
-			message.addField(channelName.length == 0 ? `Commands in all channels` : `Commands in channel #${channelName}`, createCommandList(commands[channelName]));
+		if (channelName === undefined) {
+			for (const channelName in commands) {
+				message.addField(channelName.length == 0 ? `Commands in all channels` : `Commands in channel #${channelName}`, createCommandList(commands[channelName]));
+			}
+			helpMessageCache[prefix] = message;
+		} else {
+			message.addField(`Commands in channel #${channelName}`, createCommandList(commands[channelName]));
 		}
-		helpMessageCache[prefix] = message;
 	}
 	return { embeds: [message] };
 };
@@ -1185,7 +1262,9 @@ const idiotsUndoPin: CommandFunction = async (message) => {
 	}
 };
 
-const guessScoreHandler = async (message: Discord.Message, useRole: boolean, aiCheck?: boolean) => {
+const badPeople: Record<UserId, { channel: ChannelId, timestamp: number }> = {};
+
+const guessScoreHandler = async (message: Discord.Message, useRole: boolean, aiCheck?: boolean, activateIdiotsTimer?: boolean) => {
 	if (message.channel.type == "GUILD_TEXT") {
 		if (!useRole || await checkHasScoreGuestRole(message.guild, message.author)) {
 			const attachments = message.attachments;
@@ -1199,6 +1278,22 @@ const guessScoreHandler = async (message: Discord.Message, useRole: boolean, aiC
 						case "image/png":
 						case "image/jpeg":
 						case "image/webp":
+							const bad = badPeople[message.author.id];
+							if (bad !== undefined && bad.channel === message.channel.id) {
+								const now = new Date().getTime();
+								if (now < bad.timestamp) {
+									console.log(`${new Date()} ${message.author.username}#${message.author.discriminator} bad person`);
+									message.delete().catch(catchHandler);
+									bad.timestamp += 10 * 1000;
+									return false;
+								}
+								delete badPeople[message.author.id];
+							}
+							if (!addUse(message.author)) {
+								console.log(`${new Date()} ${message.author.username}#${message.author.discriminator} guess score overuse`);
+								message.react("❌").catch(catchHandler);
+								return false;
+							}
 							if (aiCheck && !(await isScoreImage(url, catchHandler))) {
 								return false;
 							}
@@ -1207,6 +1302,12 @@ const guessScoreHandler = async (message: Discord.Message, useRole: boolean, aiC
 							return false;
 					}
 					setPin(message);
+					if (activateIdiotsTimer) {
+						const timerMs = idiotsTimer[message.guildId];
+						if (timerMs !== undefined) {
+							makeIdiotsTimer(message.channel, message.client, timerMs);
+						}
+					}
 					return true;
 				}
 			} catch (err) {
@@ -1249,12 +1350,114 @@ const stijlScoreGuessHost: CommandFunction = async (message, token, bot) => {
 };
 
 const badSteal: CommandFunction = (message, token, bot) => {
+	const channel = message.channel as Discord.TextChannel;
+	if (channel.name) {
+		console.log(`Warned "${message.author.username}#${message.author.discriminator}" at ${new Date()}`);
+		message.author.send(`\`${token}\` doesn't do anything in ${channel.name}`).catch((err) => {
+			badPeople[message.author.id] = { channel: channel.id, timestamp: new Date().getTime() + 60 * 1000 }; catchHandler(err);
+		});
+	}
 	const emoji = findEmoji("hammer_sickle", bot);
 	if (emoji !== undefined) {
-		message.react(emoji).catch(catchHandler);
+		return message.react(emoji).catch((err) => { message.delete().catch(catchHandler); catchHandler(err); });
+	}
+	return;
+};
+
+const badStijl: CommandFunction = (message, token, bot) => {
+	badSteal(message, token, bot);
+	message.react("😎").catch(catchHandler);
+};
+
+let idiotsTimer: Record<GuildId, number> = undefined;
+const activeIdiotsTimers: Record<GuildId, NodeJS.Timeout> = {};
+const idiotsTimerStorageKey = "idiotsTimer";
+const makeIdiotsTimer = (channel: Discord.TextChannel, bot: Discord.Client, timerMs: number) => {
+	const oldTimeout = activeIdiotsTimers[channel.guildId];
+	if (oldTimeout !== undefined) {
+		clearTimeout(oldTimeout);
+	}
+	activeIdiotsTimers[channel.guildId] = setTimeout(() => {
+		const emoji = findEmoji("kanapeace", bot);
+		(emoji ?
+			channel.send(`Game timeout has passed. Feel free to start a new game ${emoji}`) :
+			channel.send("Game timeout has passed. Feel free to start a new game")).catch(catchHandler);
+	}, timerMs);
+};
+const initIdiotTimer = (bot: Discord.Client, guild: Discord.Guild, timerMs: number) => {
+	idiotsTimer[guild.id] = timerMs;
+	const channel = guild.channels.cache.find(cn => cn.name === "guess-the-score-for-idiots" && cn.type === "GUILD_TEXT") as Discord.TextChannel;
+	if (channel === undefined) {
+		return false;
+	}
+	const now = new Date().getTime();
+	const lastTimestamp = channel.lastPinTimestamp || now;
+	let offset = lastTimestamp + timerMs - now;
+	if (offset < 0) {
+		offset = 0;
+	}
+	makeIdiotsTimer(channel, bot, offset);
+	return true;
+};
+const initIdiotsTimer = async (bot: Discord.Client) => {
+	if (idiotsTimer === undefined) {
+		idiotsTimer = {};
+		const storedList = await cacheGet(idiotsTimerStorageKey);
+		if (typeof storedList === "object" && storedList != null) {
+			for (const guildId in storedList) {
+				const timerMs = storedList[guildId];
+				if (typeof timerMs !== "number" || timerMs < 0) {
+					continue;
+				}
+				try {
+					const guild = await bot.guilds.fetch(guildId);
+					initIdiotTimer(bot, guild, timerMs);
+				} catch (err) {
+					catchHandler(err);
+				}
+			}
+		}
+	}
+	return idiotsTimer;
+};
+
+const setIdiotsTimer: CommandFunction = (message, commandToken, bot) => {
+	if (message.member.permissions.has("ADMINISTRATOR")) {
+		const timerMs = parseInt(pastFirstToken(message.content, commandToken));
+		if (isNaN(timerMs) || timerMs < 0) {
+			message.reply("Invalid timer value").catch(catchHandler);
+			return;
+		}
+		if (initIdiotTimer(bot, message.guild, timerMs)) {
+			message.reply(`guess-the-score-for-idiots timer has been set to ${timerMs}ms`).catch(catchHandler);
+		} else {
+			message.reply("Failed to set guess-the-score-for-idiots timer").catch(catchHandler);
+		}
+		cachePut(idiotsTimerStorageKey, idiotsTimer);
 	}
 };
 
+const getIdiotsTimer: CommandFunction = (message, commandToken, bot) => {
+	const timerMs = idiotsTimer[message.guildId];
+	if (timerMs === undefined) {
+		message.reply(`No guess-the-score-for-idiots timer is set`);
+	} else {
+		message.reply(`The current guess-the-score-for-idiots timer is ${timerMs}ms`);
+	}
+};
+
+const clearIdiotsTimer: CommandFunction = (message, commandToken, bot) => {
+	if (message.member.permissions.has("ADMINISTRATOR")) {
+		const oldTimeout = activeIdiotsTimers[message.guildId];
+		if (oldTimeout !== undefined) {
+			clearTimeout(oldTimeout);
+		}
+		delete activeIdiotsTimers[message.guildId];
+		delete idiotsTimer[message.guildId];
+		cachePut(idiotsTimerStorageKey, idiotsTimer);
+		message.reply("The timer for guess-the-score-for-idiots has been cleared");
+	}
+};
 
 let alreadyGuessedBanList: Set<UserId> = undefined;
 const alreadyGuessedBanStorageKey = "alreadyGuessedBan";
@@ -1289,37 +1492,35 @@ const alreadyGuessedBan: CommandFunction = async (message, token, bot) => {
 };
 
 const timestampRegex = /.*?(\d+)$/;
-const getMessageDate = (message: Discord.Message, token: string) => {
+const getMessageDate = (message: Discord.Message, token: string, format: 'f' | 'R', additionalText: (date: Date) => string) => {
 	const args = tokenize(pastFirstToken(message.content, token));
 	if (args.length == 1) {
 		const id = timestampRegex.exec(args[0]);
 		if (id) {
-			return Discord.SnowflakeUtil.deconstruct(id[1]).date;
+			const date = Discord.SnowflakeUtil.deconstruct(id[1]).date;
+			const millis = date.getTime();
+			const unix = Math.floor(millis / 1000);
+			message.channel.send(`<t:${unix}:${format}> \`${additionalText(date)}\``).catch(catchHandler);
 		}
 	}
-	return undefined;
 };
 
 const getTimestamp: CommandFunction = async (message, token, bot) => {
-	const date = getMessageDate(message, token);
-	if (date) {
-		message.channel.send(date.toUTCString()).catch(catchHandler);
-	}
+	getMessageDate(message, token, 'f', date => date.toUTCString());
 };
 
 const getTimeSince: CommandFunction = async (message, token, bot) => {
-	const date = getMessageDate(message, token);
-	if (date) {
+	getMessageDate(message, token, 'R', date => {
 		const time = (new Date()).getTime() - date.getTime();
-		message.channel.send(toHms(time)).catch(catchHandler);
-	}
+		return toHms(time) + " ago";
+	});
 };
 
 let _messageHandler: (message: Discord.Message) => void;
 
 const reeval: CommandFunction = async (message, token, bot) => {
 	try {
-		if (message.author.id === "243542213227708416") {
+		if (message.member.permissions.has("ADMINISTRATOR")) {
 			const arg = pastFirstToken(message.content, token).trim();
 			const match = parseMessageLink(arg);
 			if (match) {
@@ -1377,6 +1578,11 @@ const commands: Record<string, Record<string, Command>> = {
 			usage: "todo",
 			hidden: true
 		},
+		"ems": {
+			command: execEms,
+			explanation: "Render EMS Serenissima text",
+			usage: "$COMMAND_TOKEN <text>"
+		},
 		"giveme-blacklist": {
 			command: givemeBlacklist,
 			explanation: "Prevents a user from using giveme for a role (requires admin)",
@@ -1413,6 +1619,21 @@ const commands: Record<string, Record<string, Command>> = {
 			usage: "",
 			hidden: true
 		},
+		"set-idiots-timer": {
+			command: setIdiotsTimer,
+			explanation: "Sets a timer to end the game in guess-the-score-for-idiots",
+			usage: "$COMMAND_TOKEN$ timerMs"
+		},
+		"get-idiots-timer": {
+			command: getIdiotsTimer,
+			explanation: "Gets the timer to end the game in guess-the-score-for-idiots",
+			usage: "$COMMAND_TOKEN$"
+		},
+		"clear-idiots-timer": {
+			command: clearIdiotsTimer,
+			explanation: "Clears the timer to end the game in guess-the-score-for-idiots",
+			usage: "$COMMAND_TOKEN$"
+		},
 		"reeval": {
 			command: reeval,
 			explanation: "",
@@ -1427,20 +1648,24 @@ const commands: Record<string, Record<string, Command>> = {
 		"hangman": { command: hangman, explanation: "Play composer hangman!", usage: "$COMMAND_TOKEN$ [help]" },
 		"hm": { command: hangman, explanation: "Play composer hangman!", usage: "$COMMAND_TOKEN$ [help]" }
 	},
-	"new-roles": {
+	"role-assignment": {
 		"giveme": { command: giveRole, explanation: "Gives you a role", usage: "$COMMAND_TOKEN$ <role>" },
 		"takeaway": { command: takeRole, explanation: "Takes a role from you", usage: "$COMMAND_TOKEN$ <role>" },
-		"roles": { command: listRoles, explanation: "List the roles I can give", usage: "$COMMAND_TOKEN$" }
+		"roles": { command: listRoles, explanation: "List the roles I can give", usage: "$COMMAND_TOKEN$" },
+		"help": { command: localHelp, explanation: "", usage: "", hidden: true }
 	},
 	"guess-the-score": {
 		"steal": { command: stealScoreGuessHost, explanation: "Take score guess host role by force", usage: "$COMMAND_TOKEN$" },
 		"stijl": { command: stijlScoreGuessHost, explanation: "More cool way to steal", usage: "$COMMAND_TOKEN$" },
-		"set-pin": { command: normalSetPin, explanation: "Pin your message with an image for the game", usage: "Reply to your message to pin, $COMMAND_TOKEN$" }
+		"set-pin": { command: normalSetPin, explanation: "Pin your message with an image for the game", usage: "Reply to your message to pin, $COMMAND_TOKEN$" },
+		"help": { command: localHelp, explanation: "", usage: "", hidden: true }
 	},
 	"guess-the-score-for-idiots": {
 		"set-pin": { command: idiotsSetPin, explanation: "Pin your message with an image for the game", usage: "Reply to your message to pin, $COMMAND_TOKEN$" },
 		"undo-pin": { command: idiotsUndoPin, explanation: "Undoes the last pinning", usage: "$COMMAND_TOKEN$" },
-		"steal": { command: badSteal, explanation: "", usage: "", hidden: true }
+		"steal": { command: badSteal, explanation: "", usage: "", hidden: true },
+		"stijl": { command: badStijl, explanation: "", usage: "", hidden: true },
+		"help": { command: localHelp, explanation: "", usage: "", hidden: true }
 	}
 };
 
@@ -1473,6 +1698,13 @@ function help(message: Discord.Message, commandToken: string) {
 			}
 		}
 		message.channel.send(`Command ${commandName} does not exist`).catch(catchHandler);
+	}
+};
+
+function localHelp(message: Discord.Message, commandToken: string) {
+	const channel = message.channel as Discord.TextChannel;
+	if (channel.name != undefined) {
+		message.channel.send(helpMessage(message, channel.name)).catch(catchHandler);
 	}
 };
 
@@ -1554,10 +1786,13 @@ const installHandlers = async (bot: Discord.Client) => {
 		catchHandler(err);
 	}
 	const messageHandler = (message: Discord.Message) => {
-		if (message.author.id === bot.user.id) {
+		if (message.author.id === bot.user.id || message.author.bot) {
 			return;
 		}
 		if (message.channel.isText() && hasChannelPermission(message, "SEND_MESSAGES")) {
+			if (message.content.toUpperCase().includes("KAPUSTIN") && Math.random() < 0.25) {
+				message.react("🤮").catch(catchHandler);
+			}
 			const channel = message.channel as Discord.TextChannel;
 			const flag = commandFlag(message);
 			const firstWord = firstToken(message.content);
@@ -1577,7 +1812,7 @@ const installHandlers = async (bot: Discord.Client) => {
 				commandFound = findCommand(commands[channel.name]) || findCommand(commands[""]);
 			}
 			if (!commandFound) {
-				if (channel.name !== "new-roles") {
+				if (channel.name !== "role-assignment") {
 					sendEmoji(message, bot);
 				}
 				switch (channel.name) {
@@ -1590,14 +1825,14 @@ const installHandlers = async (bot: Discord.Client) => {
 							}
 						}
 					} break;
-					case "new-roles": {
+					case "role-assignment": {
 						deleteExtraneous(message);
 					} break;
 					case "guess-the-score": {
 						guessScoreHandler(message, true);
 					} break;
 					case "guess-the-score-for-idiots": {
-						guessScoreHandler(message, false, true);
+						guessScoreHandler(message, false, true, true);
 					} break;
 				}
 			}
@@ -1638,6 +1873,10 @@ const installHandlers = async (bot: Discord.Client) => {
 			const atted = pinged[1];
 			if (referenced !== undefined || atted != undefined) {
 				const logChannel = deleted.guild.channels.cache.find(channel => channel.name === "ghost-pings");
+				if (logChannel === undefined) {
+					console.error(`Could not find logChannel ${new Date()}`);
+					return;
+				}
 				if (logChannel.type === "GUILD_TEXT") {
 					const now = new Date();
 					const alert = new Discord.MessageEmbed()
@@ -1732,6 +1971,7 @@ const installHandlers = async (bot: Discord.Client) => {
 			const moveToActive: Discord.GuildChannel[] = [];
 			const [activeCategoryId, inactiveCategoryId] = findCategoryIds(guild);
 			for (const [channelId, channel] of guild.channels.cache) {
+				if (channelId === "738898664277409804") { continue; }
 				if (channel.type === "GUILD_TEXT") {
 					const timeLimit = 1000 * 60 * 60 * 24 * 9; // 9 days
 					const id = channel.parent?.id;
@@ -1804,12 +2044,23 @@ const installHandlers = async (bot: Discord.Client) => {
 			}
 		}, pollInterval / 2);
 	};
-	setTimeout(pollActivity, 5000);
-	setInterval(pollActivity, pollInterval);
+	//setTimeout(pollActivity, 5000);
+	//setInterval(pollActivity, pollInterval);
 
 	bot.on("messageCreate", messageHandler);
 	bot.on("messageDelete", deleteHandler);
 	bot.on("messageReactionAdd", messageReactionHandler);
+	const guildMemberAddHandler = (member: Discord.GuildMember) => {
+		setTimeout(() => {
+			member.roles.add("736825071154495490").then(() => {
+				console.log(`${member.displayName} given member role at ${new Date()}`);
+			}, catchHandler);
+		}, 30 * 1000);
+	};
+	bot.on("guildMemberAdd", guildMemberAddHandler);
+	bot.on("ready", () => {
+		initIdiotsTimer(bot);
+	});
 	return { messageCreate: messageHandler, messageDelete: deleteHandler, messageReactionAdd: messageReactionHandler };
 };
 

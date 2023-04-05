@@ -11,4 +11,6 @@ data
 training
 models
 models_*
-score_classifier_model
+score_classifier_model*/
+*.png
+*.tiff
